@@ -1,6 +1,7 @@
 package vn.bongdaplus.reader.ui
 
 import android.content.Intent
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
