@@ -43,7 +43,7 @@ object VideoResolver {
                         if (request.httpMethod() == "POST" && data != null) {
                             b.post(object : okhttp3.RequestBody() {
                                 override fun contentType(): okhttp3.MediaType? = null
-                                override fun writeTo(sink: okio.Buffer) {
+                                override fun writeTo(sink: okio.BufferedSink) {
                                     sink.write(data)
                                 }
                             })
