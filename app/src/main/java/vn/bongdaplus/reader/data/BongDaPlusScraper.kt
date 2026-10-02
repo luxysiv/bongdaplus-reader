@@ -54,7 +54,17 @@ object BongDaPlusScraper {
             }
             if (img != null && img.startsWith("//")) img = "https:$img"
             if (img != null && !img.startsWith("http")) img = null
-            out[id] = Article(id, title, url, img, category)
+            // giờ đăng: tìm text giống thời gian trong thẻ cha gần nhất
+            val card = a.parents().firstOrNull {
+                val c = it.className()
+                c.contains("item") || c.contains("stor") || c.contains("news") || it.tagName() == "article" || it.tagName() == "li"
+            } ?: a.parent()
+            val timeRe = Regex("""(\d{1,2}:\d{2}|\d{1,2}h\d{2}|\d+\s?(phút|giờ|ngày).{0,10}trước|hôm nay|hôm qua)""", RegexOption.IGNORE_CASE)
+            val time: String? = card?.allElements
+                ?.asSequence()
+                ?.map { it.ownText().trim() }
+                ?.firstOrNull { it.length in 4..48 && timeRe.containsMatchIn(it) }
+            out[id] = Article(id, title, url, img, category, time = time)
             if (out.size >= 40) break
         }
         return out.values.toList()

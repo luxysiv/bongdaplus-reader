@@ -37,3 +37,14 @@ val CATEGORIES = listOf(
     Category("Thế giới", "bong-da-the-gioi"),
     Category("Video", "video"),
 )
+
+/** Tên hiển thị của chuyên mục từ slug */
+fun catName(slug: String?): String =
+    CATEGORIES.find { it.slug == slug }?.name ?: "Bóng đá"
+
+/** Cache RAM: prefill chi tiết khi bấm từ list để khỏi chờ load */
+object ArticleCache {
+    private val map = LinkedHashMap<String, Article>()
+    fun put(a: Article) { map[a.id] = a; if (map.size > 100) map.remove(map.keys.first()) }
+    fun get(id: String): Article? = map[id]
+}
