@@ -3,9 +3,9 @@ package vn.bongdaplus.reader.data
 import androidx.media3.common.MimeTypes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import okhttp3.toRequestBody
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
@@ -41,7 +41,12 @@ object VideoResolver {
                         }
                         val data = request.dataToSend()
                         if (request.httpMethod() == "POST" && data != null) {
-                            b.post(data.toRequestBody())
+                            b.post(object : okhttp3.RequestBody() {
+                                override fun contentType(): okhttp3.MediaType? = null
+                                override fun writeTo(sink: okio.Buffer) {
+                                    sink.write(data)
+                                }
+                            })
                         }
                         http.newCall(b.build()).execute().use { res ->
                             val headers = mutableMapOf<String, List<String>>()
@@ -82,7 +87,7 @@ object VideoResolver {
             val service = NewPipe.getService(0)
             val handler = service.streamLHFactory
                 .fromUrl("https://www.youtube.com/watch?v=$videoId")
-            val ex = service.getExtractor(handler)
+            val ex = service.getStreamExtractor(handler)
             ex.fetchPage()
             // Ưu tiên luồng gộp (hình+tiếng) ≤720p cho nhẹ máy
             val muxed = try { ex.videoStreams } catch (_: Exception) { emptyList() }
