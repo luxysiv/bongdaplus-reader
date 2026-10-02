@@ -94,6 +94,8 @@ dependencies {
 
     // HTML scraping bongdaplus.vn (không có API công khai)
     implementation("org.jsoup:jsoup:1.17.2")
+    // HTTP client (thay transport WebView): cookie đồng bộ với WebView login
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Load ảnh
     implementation("io.coil-kt:coil-compose:2.6.0")
 

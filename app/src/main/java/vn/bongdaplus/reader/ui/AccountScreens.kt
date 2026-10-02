@@ -36,31 +36,32 @@ private suspend fun runSessionDiag(cookieNames: List<String>): String {
     try {
         sb.appendLine("Cookie trong máy (${cookieNames.size}): " +
             (cookieNames.sorted().take(25).joinToString(", ").ifBlank { "(trống)" }))
-        sb.appendLine("WebView fetch: " + (if (WebFetcher.available()) "sẵn sàng" else "KHÔNG sẵn sàng"))
-        val homeProbe = WebFetcher.loadAndEval("https://bongdaplus.vn/",
-            "(function(){var u=document.getElementById('txtUserid');u=u&&u.value||'';" +
-                "var lo=!!document.querySelector('form[action*=\"Logout\"],a[href*=\"Logout\"]');" +
-                "var n=document.querySelectorAll('div#lstnoti li.news').length;" +
-                "var c=document.querySelectorAll('div.news').length;" +
-                "return u+'|||'+(lo?'1':'0')+'|||'+n+'|||'+c;})()", 2000)
-        if (homeProbe == null) sb.appendLine("Trang chủ site: KHÔNG tải được")
+        sb.appendLine("HTTP: OkHttp + cookie WebView login")
+        // Trang chủ site: uid tĩnh + số dòng lstnoti + số tin
+        val home = try { Http.get("https://bongdaplus.vn/") } catch (_: Exception) { null }
+        if (home == null) sb.appendLine("Trang chủ site: KHÔNG tải được")
         else {
-            val p = homeProbe.split("|||")
-            sb.appendLine("Trang chủ site: userid=" + p.getOrNull(0).orEmpty().ifBlank { "(trống)" } +
-                ", logout=" + p.getOrNull(1) + ", lstnoti=" + p.getOrNull(2) + ", tin=" + p.getOrNull(3))
+            val uid = Regex("id=\"txtUserid\" value=\"([^\"]*)\"").find(home.html)
+                ?.groupValues?.get(1).orEmpty()
+            val doc = try { org.jsoup.Jsoup.parse(home.html) } catch (_: Exception) { null }
+            sb.appendLine("Trang chủ site: userid=" + uid.ifBlank { "(trống)" } +
+                ", lstnoti=" + (doc?.select("div#lstnoti li.news")?.size ?: "?") +
+                ", tin=" + (doc?.select("div.news")?.size ?: "?"))
         }
-        val dashProbe = WebFetcher.loadAndEval(
-            "https://member.bongdaplus.vn/Identity/Account/Manage/DashBoard",
-            "(function(){var caps=[];try{document.querySelectorAll('div.brd-cap').forEach(" +
-                "function(e){caps.push(e.innerText.trim().replace(/\\s+/g,' ').slice(0,40));});}catch(x){}" +
-                "var c=document.querySelectorAll('ul.news-lst li.news').length;" +
-                "var login=!!document.querySelector('form#account');" +
-                "return caps.join(' ## ')+'|||'+c+'|||'+(login?'LOGINPAGE':'OK');})()", 2000)
-        if (dashProbe == null) sb.appendLine("Dashboard member: KHÔNG tải được")
+        // Dashboard member: boards + dòng bình luận
+        val dash = try {
+            Http.get("https://member.bongdaplus.vn/Identity/Account/Manage/DashBoard")
+        } catch (_: Exception) { null }
+        if (dash == null) sb.appendLine("Dashboard member: KHÔNG tải được")
+        else if (dash.bouncedToLogin()) sb.appendLine("Dashboard member: BỊ ĐÁ VỀ LOGIN (thiếu phiên member)")
         else {
-            val p = dashProbe.split("|||")
-            sb.appendLine("Dashboard boards: " + p.getOrNull(0).orEmpty().ifBlank { "(không thấy)" })
-            sb.appendLine("Dashboard dòng bình luận: " + p.getOrNull(1) + ", trạng thái: " + p.getOrNull(2))
+            val doc = try { org.jsoup.Jsoup.parse(dash.html) } catch (_: Exception) { null }
+            val caps = doc?.select("div.brd-cap")
+                ?.map { it.text().trim().replace(Regex("\\s+"), " ").take(40) }
+                .orEmpty()
+            sb.appendLine("Dashboard boards: " + (caps.ifEmpty { listOf("(không thấy)") }.joinToString(" ## ")))
+            sb.appendLine("Dashboard dòng bình luận: " +
+                (doc?.select("ul.news-lst li.news")?.size ?: "?"))
         }
     } catch (e: Exception) {
         sb.appendLine("Lỗi chẩn đoán: " + (e.message?.take(120) ?: "?"))
