@@ -91,10 +91,10 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
                 } catch (_: Exception) { }
             }
             val fresh = all.distinctBy { it.id }.filter { it.id !in lastSeen }.take(3)
+            val logged = try { auth.loggedIn.first() } catch (_: Exception) { false }
             if (fresh.isNotEmpty()) {
                 NotifyHelper.ensureChannel(applicationContext)
                 val top = fresh.first()
-                val logged = try { auth.loggedIn.first() } catch (_: Exception) { false }
                 val prefix = if (logged) "⚽ Tin mới cho bạn" else "⚽ Tin nóng BongdaPlus"
                 NotifyHelper.show(
                     applicationContext, prefix, top.title, top.url,
@@ -102,8 +102,10 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
                 )
                 auth.saveLastSeen((fresh.map { it.id } + lastSeen).take(30).toSet())
             }
-            checkComments(auth, cookies)
-            checkMemberNotifs(auth, cookies)
+            // Nguồn duy nhất khi đã login: div thông báo thật (div#lstnoti).
+            // Chưa login mới dùng heuristic đoán số đếm.
+            if (logged && cookies.isNotEmpty()) checkMemberNotifs(auth, cookies)
+            else checkComments(auth, cookies)
             Result.success()
         } catch (_: Exception) {
             Result.retry()
