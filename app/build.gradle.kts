@@ -97,7 +97,8 @@ dependencies {
     // HTTP client (thay transport WebView): cookie đồng bộ với WebView login
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Phát video trong app: ExoPlayer (Media3) + giải luồng YouTube
-    val media3Ver = "1.5.1"
+    // (1.4.1: bản mới nhất còn hỗ trợ compileSdk 34 của app)
+    val media3Ver = "1.4.1"
     implementation("androidx.media3:media3-exoplayer:$media3Ver")
     implementation("androidx.media3:media3-ui:$media3Ver")
     implementation("androidx.media3:media3-exoplayer-hls:$media3Ver")
