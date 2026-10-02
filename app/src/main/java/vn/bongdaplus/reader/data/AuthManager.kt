@@ -123,4 +123,31 @@ class AuthManager(private val ctx: Context) {
                 (c1 + c2).contains("Identity", ignoreCase = true)
         } catch (_: Exception) { false }
     }
+
+    /** Phiên member (member.bongdaplus.vn) — xong bước 1 của login */
+    fun hasMemberCookie(): Boolean {
+        return try {
+            val c = CookieManager.getInstance().getCookie("https://member.bongdaplus.vn") ?: ""
+            c.contains(".AspNetCore.Identity.Application", ignoreCase = true) ||
+                c.contains("Identity", ignoreCase = true)
+        } catch (_: Exception) { false }
+    }
+
+    /**
+     * Phiên chính (bongdaplus.vn) — server này mới nhận POST bình luận/vote.
+     * Phiên này chỉ có sau khi WebView chạy handshake SSO (mở bongdaplus.vn
+     * sau khi login member). Thiếu nó là bình luận báo "chưa đăng nhập".
+     */
+    fun hasSiteCookie(): Boolean {
+        return try {
+            val c = CookieManager.getInstance().getCookie("https://bongdaplus.vn") ?: ""
+            c.contains(".AspNetCore.Identity.Application", ignoreCase = true) ||
+                c.contains("Identity", ignoreCase = true)
+        } catch (_: Exception) { false }
+    }
+
+    /** Đẩy cookie WebView xuống bộ nhớ chung để Jsoup/màn hình khác đọc được ngay */
+    fun flushCookies() {
+        try { CookieManager.getInstance().flush() } catch (_: Exception) { }
+    }
 }

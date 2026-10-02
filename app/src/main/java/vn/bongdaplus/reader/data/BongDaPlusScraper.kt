@@ -350,6 +350,8 @@ object BongDaPlusScraper {
                         "replyname", replyName, "comment", text)
                     .ignoreContentType(true).post()
                 val b = res.body().text()
+                // Chưa login: server trả trang đăng nhập (hoặc redirect về login)
+                if (isLoginPage(b)) return@withContext false
                 b.contains("duyệt", true) || b.contains("thành công", true) || b.isNotBlank()
             } catch (_: Exception) { false }
         }
@@ -429,12 +431,13 @@ object BongDaPlusScraper {
     suspend fun setCommentEmotion(objectId: String, commentId: String, like: Boolean,
                                   cookies: Map<String, String>): Boolean =
         withContext(Dispatchers.IO) {
+            if (cookies.isEmpty()) return@withContext false
             try {
                 val type = if (like) "1" else "7"
-                Jsoup.connect("$BASE/setCommentEmotion/$objectId/$commentId/$type")
+                val res = Jsoup.connect("$BASE/setCommentEmotion/$objectId/$commentId/$type")
                     .userAgent(UA).timeout(15000).cookies(cookies)
                     .ignoreContentType(true).post()
-                true
+                !isLoginPage(res.body().text())
             } catch (_: Exception) { false }
         }
 
@@ -445,11 +448,12 @@ object BongDaPlusScraper {
     suspend fun setNewsEmotion(objectId: String, objectType: String, emotionType: Int,
                                 cookies: Map<String, String>): Boolean =
         withContext(Dispatchers.IO) {
+            if (cookies.isEmpty()) return@withContext false
             try {
-                Jsoup.connect("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType")
+                val res = Jsoup.connect("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType")
                     .userAgent(UA).timeout(15000).cookies(cookies)
                     .ignoreContentType(true).post()
-                true
+                !isLoginPage(res.body().text())
             } catch (_: Exception) { false }
         }
 
@@ -476,6 +480,11 @@ object BongDaPlusScraper {
                 out
             } catch (_: Exception) { emptyMap() }
         }
+
+    /** Server trả trang đăng nhập thay vì thực hiện hành động => coi như chưa login */
+    private fun isLoginPage(body: String): Boolean =
+        body.contains("Input_Email") || body.contains("Account/Login") ||
+            (body.contains("Đăng nhập") && body.contains("Mật khẩu"))
 
     private fun String?.ifNullOrBlank(def: () -> String): String =
         if (this.isNullOrBlank()) def() else this

@@ -368,6 +368,12 @@ private fun AuthWebViewScreen(
 ) {
     val scope = rememberCoroutineScope()
     var status by remember(url) { mutableStateOf("Đang mở $title BongdaPlus…") }
+    // CookieManager là singleton dùng chung toàn app (mọi màn hình/WebView/Jsoup
+    // đều đọc cùng 1 kho), nhưng phiên member và phiên site là 2 domain khác nhau:
+    // login member xong PHẢI mở bongdaplus.vn một lần để site handshake SSO
+    // (iframe LoginFromBongdaplus) rồi mới có cookie gửi bình luận được.
+    var ssoTried by remember(url) { mutableStateOf(false) }
+    var finished by remember(url) { mutableStateOf(false) }
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(title) },
@@ -382,13 +388,28 @@ private fun AuthWebViewScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    CookieManager.getInstance().setAcceptCookie(true)
+                    val cm = CookieManager.getInstance()
+                    cm.setAcceptCookie(true)
+                    // Cho iframe SSO member→site đọc phiên chéo domain
+                    try { cm.setAcceptThirdPartyCookies(this, true) } catch (_: Exception) { }
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, url: String) {
-                            if (auth.hasSessionCookie() ||
-                                (url.contains("bongdaplus.vn") && !url.contains("Account/Login") && !url.contains("Account/Register"))) {
+                            auth.flushCookies()
+                            if (finished) return
+                            val hasMember = auth.hasMemberCookie()
+                            val hasSite = auth.hasSiteCookie()
+                            if (hasMember && hasSite) {
+                                finished = true
                                 status = "✅ Thành công! Đang lưu…"
                                 scope.launch { auth.markLoggedIn(""); onDone() }
+                            } else if (hasMember && !hasSite && !ssoTried) {
+                                ssoTried = true
+                                status = "Đã đăng nhập member, đang đồng bộ sang BongdaPlus…"
+                                view.loadUrl(AuthManager.HOME)
+                            } else if (!hasMember) {
+                                status = "Nhập Email + Mật khẩu (hoặc Google/Apple) để tiếp tục…"
+                            } else {
+                                status = "Đang đồng bộ phiên, chờ chút…"
                             }
                         }
                     }

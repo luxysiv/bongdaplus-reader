@@ -207,9 +207,16 @@ class DetailViewModel : ViewModel() {
         viewModelScope.launch {
             _sending.value = true; _sendMsg.value = null
             val clean = text.trim()
+            val ck = cookiesOf(cookieProvider)
+            // Chưa có cookie phiên site => chắc chắn bị đá về login, khỏi gọi mạng
+            if (ck.isEmpty()) {
+                _sendMsg.value = "Bạn cần đăng nhập tài khoản BongdaPlus trước."
+                _sending.value = false
+                return@launch
+            }
             val ok = try {
                 BongDaPlusScraper.postComment(
-                    d.objectId, d.objectType, clean, cookiesOf(cookieProvider),
+                    d.objectId, d.objectType, clean, ck,
                     parentId, replyId, replyName)
             } catch (_: Exception) { false }
             _sendMsg.value = if (ok) "Đã gửi! Bình luận chờ duyệt rồi sẽ hiện. Đã bật theo dõi — có bình luận mới sẽ báo chi tiết."
