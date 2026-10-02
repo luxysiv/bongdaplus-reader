@@ -96,6 +96,12 @@ dependencies {
     implementation("org.jsoup:jsoup:1.17.2")
     // HTTP client (thay transport WebView): cookie đồng bộ với WebView login
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Phát video trong app: ExoPlayer (Media3) + giải luồng YouTube
+    val media3Ver = "1.5.1"
+    implementation("androidx.media3:media3-exoplayer:$media3Ver")
+    implementation("androidx.media3:media3-ui:$media3Ver")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Ver")
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
     // Load ảnh
     implementation("io.coil-kt:coil-compose:2.6.0")
 

@@ -25,17 +25,29 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import vn.bongdaplus.reader.data.*
 
 /**
@@ -301,8 +313,8 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
         }
         is ContentBlock.Video -> {
             Column(Modifier.padding(8.dp, 8.dp)) {
-                // Phát ngay trong app (YouTube embed lẫn streaming.bongdaplus.vn)
-                InAppVideoPlayer(b.embedUrl)
+                // ExoPlayer trước, rớt về WebView khi không giải được luồng
+                ExoVideoPlayer(b.embedUrl, b.videoId)
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("🎬 Video trong bài",
@@ -337,7 +349,115 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
     }
 }
 
-/** Trình phát video trong app (YouTube embed + streaming.bongdaplus.vn) */
+/** Phát video bằng ExoPlayer (mượt, nhẹ, fullscreen thật). Rớt về WebView khi lỗi. */
+@Composable
+private fun ExoVideoPlayer(embedUrl: String, videoId: String?) {
+    val ctx = LocalContext.current
+    var stream by remember(embedUrl) { mutableStateOf<StreamRef?>(null) }
+    var resolving by remember(embedUrl) { mutableStateOf(true) }
+    var playError by remember(embedUrl) { mutableStateOf(false) }
+    var fullscreen by remember(embedUrl) { mutableStateOf(false) }
+
+    val dsFactory = remember {
+        DefaultHttpDataSource.Factory()
+            .setUserAgent(Http.UA)
+            .setDefaultRequestProperties(mapOf("Referer" to "https://bongdaplus.vn/"))
+    }
+    val player = remember(embedUrl) {
+        ExoPlayer.Builder(ctx)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(ctx).setDataSourceFactory(dsFactory))
+            .build().apply {
+                addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        playError = true
+                    }
+                })
+            }
+    }
+    DisposableEffect(embedUrl) {
+        onDispose { try { player.release() } catch (_: Exception) { } }
+    }
+    LaunchedEffect(embedUrl) {
+        try {
+            val s = withContext(Dispatchers.IO) { VideoResolver.resolve(embedUrl, videoId) }
+            if (s != null) {
+                stream = s
+                val item = MediaItem.Builder().setUri(s.url).apply {
+                    s.mimeType?.let { setMimeType(it) }
+                }.build()
+                try {
+                    player.setMediaItem(item)
+                    player.prepare()
+                } catch (_: Exception) { playError = true }
+            }
+        } catch (_: Exception) { }
+        resolving = false
+    }
+
+    if (playError || (!resolving && stream == null)) {
+        // Không giải/phát được bằng ExoPlayer -> player WebView cũ
+        InAppVideoPlayer(embedUrl)
+        return
+    }
+    Box(
+        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(12.dp)).background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        if (stream != null) {
+            AndroidView(
+                factory = { c ->
+                    PlayerView(c).also { pv ->
+                        pv.player = player
+                        pv.setFullscreenButtonClickListener { fullscreen = true }
+                    }
+                },
+                update = { it.player = if (fullscreen) null else player },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            val poster = remember(embedUrl) {
+                if (!videoId.isNullOrBlank()) "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
+                else Regex("streaming\\.bongdaplus\\.vn/embed/([0-9a-f-]+)")
+                    .find(embedUrl)?.groupValues?.get(1)
+                    ?.let { "https://streaming.bongdaplus.vn/video/$it/thumbnail" }
+            }
+            if (poster != null) {
+                AsyncImage(poster, null,
+                    modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+            CircularProgressIndicator(color = Color.White)
+        }
+        if (stream != null && !fullscreen) {
+            IconButton(
+                onClick = { fullscreen = true },
+                modifier = Modifier.align(Alignment.TopEnd)
+            ) {
+                Icon(Icons.Default.Fullscreen, "Toàn màn hình", tint = Color.White)
+            }
+        }
+    }
+    if (fullscreen && stream != null) {
+        Dialog(
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            onDismissRequest = { fullscreen = false }
+        ) {
+            AndroidView(
+                factory = { c ->
+                    PlayerView(c).also { pv ->
+                        pv.player = player
+                        pv.setFullscreenButtonClickListener { fullscreen = false }
+                    }
+                },
+                update = { if (it.player == null) it.player = player },
+                onRelease = { it.player = null },
+                modifier = Modifier.fillMaxSize().background(Color.Black)
+            )
+        }
+    }
+}
+
+/** Trình phát WebView dự phòng (khi ExoPlayer không giải/phát được) */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun InAppVideoPlayer(embedUrl: String) {
