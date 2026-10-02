@@ -175,11 +175,16 @@ object BongDaPlusScraper {
             val title = doc.selectFirst("h1")?.text()?.trim()
                 ?: doc.selectFirst("meta[property=og:title]")?.attr("content") ?: "Bài viết"
             var ogImg = doc.selectFirst("meta[property=og:image]")?.attr("content")
-            // Trang video (/video/...) không có div.content: player là
-            // div.play-box > iframe.play-frame (YouTube embed), mô tả ở div.clip-info p.desc
+            // Trang video (/video/...): player là iframe trong div.play-box —
+            // tin thường là YouTube embed, highlight là streaming.bongdaplus.vn/embed/...
+            // Mô tả ở div.clip-info p.desc (không có div.content).
             val videoSrc = doc.selectFirst("div.play-box iframe[src], iframe.play-frame[src]")
                 ?.attr("src")?.trim().orEmpty()
+                .ifBlank {
+                    doc.selectFirst("div.play-box iframe[data-src]")?.attr("data-src")?.trim().orEmpty()
+                }
             val ytId = extractYoutubeId(videoSrc)
+            val hasVideo = videoSrc.isNotBlank()
             val clipDesc = doc.selectFirst("div.clip-info p.desc")?.text()?.trim().orEmpty()
             val bodyEl = doc.selectFirst("#postContent.content")
                 ?: doc.selectFirst("div.content")
@@ -190,7 +195,7 @@ object BongDaPlusScraper {
                 ?: doc.body()
             bodyEl.select("script, style").remove()
             val blocks = when {
-                ytId != null -> buildList {
+                hasVideo -> buildList {
                     add(ContentBlock.Video(videoSrc, ytId, title))
                     if (clipDesc.isNotBlank()) add(ContentBlock.Paragraph(clipDesc))
                     // các đoạn chữ còn lại trong clip-info (tags đã nằm ngoài nên an toàn)

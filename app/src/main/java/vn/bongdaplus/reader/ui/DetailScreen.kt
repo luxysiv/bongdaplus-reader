@@ -1,6 +1,11 @@
 package vn.bongdaplus.reader.ui
 
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -287,37 +293,27 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
             }
         }
         is ContentBlock.Video -> {
-            val thumb = if (!b.videoId.isNullOrBlank()) "https://i.ytimg.com/vi/${b.videoId}/hqdefault.jpg" else null
-            val watchUrl = if (!b.videoId.isNullOrBlank()) "https://www.youtube.com/watch?v=${b.videoId}" else b.embedUrl
             Column(Modifier.padding(8.dp, 8.dp)) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable {
-                            try { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(watchUrl))) }
-                            catch (_: Exception) { }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (thumb != null) {
-                        AsyncImage(thumb, "▶ Phát video",
-                            modifier = Modifier.fillMaxWidth(),
-                            contentScale = ContentScale.FillWidth)
-                    } else {
-                        Spacer(Modifier.fillMaxWidth().height(180.dp))
-                    }
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
-                    ) {
-                        Text("▶", fontSize = 28.sp, color = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.padding(14.dp, 8.dp))
+                // Phát ngay trong app (YouTube embed lẫn streaming.bongdaplus.vn)
+                InAppVideoPlayer(b.embedUrl)
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🎬 Video trong bài",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.weight(1f))
+                    if (!b.videoId.isNullOrBlank()) {
+                        Text("Mở YouTube ↗",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable {
+                                try {
+                                    ctx.startActivity(Intent(Intent.ACTION_VIEW,
+                                        android.net.Uri.parse("https://www.youtube.com/watch?v=${b.videoId}")))
+                                } catch (_: Exception) { }
+                            })
                     }
                 }
-                Text("🎬 Bấm để phát video",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(4.dp, 6.dp, 0.dp, 0.dp))
             }
         }
         is ContentBlock.Quote -> Row(Modifier.padding(16.dp, 8.dp)) {
@@ -332,6 +328,30 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
             Text(b.text, fontSize = (17 * fontScale).sp, lineHeight = (26 * fontScale).sp)
         }
     }
+}
+
+/** Trình phát video trong app (YouTube embed + streaming.bongdaplus.vn) */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun InAppVideoPlayer(embedUrl: String) {
+    AndroidView(
+        factory = { c ->
+            WebView(c).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.mediaPlaybackRequiresUserGesture = false
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+                webViewClient = WebViewClient()
+                webChromeClient = WebChromeClient()
+                loadUrl(embedUrl)
+            }
+        },
+        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)),
+        onRelease = { it.stopLoading(); it.destroy() }
+    )
 }
 
 @Composable
