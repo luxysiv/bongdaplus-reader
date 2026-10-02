@@ -140,7 +140,14 @@ class MainActivity : ComponentActivity() {
                                 onLogin = { nav.navigate("login") },
                                 onRegister = { nav.navigate("register") },
                                 onSaved = { nav.navigate("saved") },
-                                onOpenArticle = ::openArticle)
+                                onOpenArticle = ::openArticle,
+                                onNotifs = { nav.navigate("notifs") })
+                        }
+                        composable("notifs") {
+                            MemberNotifsScreen(auth,
+                                onBack = { nav.popBackStack() },
+                                onOpen = ::openArticle,
+                                onLogin = { nav.navigate("login") })
                         }
                     }
                 }

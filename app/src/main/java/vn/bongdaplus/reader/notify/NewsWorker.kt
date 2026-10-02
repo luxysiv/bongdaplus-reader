@@ -103,6 +103,7 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
                 auth.saveLastSeen((fresh.map { it.id } + lastSeen).take(30).toSet())
             }
             checkComments(auth, cookies)
+            checkMemberNotifs(auth, cookies)
             Result.success()
         } catch (_: Exception) {
             Result.retry()
@@ -232,6 +233,41 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
                 } catch (_: Exception) { }
             }
             if (changed) auth.saveCommentCounts(counts)
+        } catch (_: Exception) { }
+    }
+
+    /**
+     * Thông báo member THẬT từ div#lstnoti (đúng lịch sử web, user xác thực bằng .mht):
+     * "X đã thích / không thích bình luận của bạn ở bài viết: Y" kèm link #txtcomment_.
+     * Lần đầu chỉ lưu mốc. Chỉ chạy khi đã đăng nhập (có cookies).
+     */
+    private suspend fun checkMemberNotifs(auth: AuthManager, cookies: Map<String, String>) {
+        try {
+            if (cookies.isEmpty()) return
+            val logged = try { auth.loggedIn.first() } catch (_: Exception) { false }
+            if (!logged) return
+            NotifyHelper.ensureChannel(applicationContext)
+            val list = try { BongDaPlusScraper.fetchMemberNotifications(cookies) }
+            catch (_: Exception) { return }
+            if (list.isEmpty()) return
+            val seen = try { auth.seenNotifKeys() } catch (_: Exception) { emptySet() }
+            if (seen.isEmpty()) {
+                auth.saveSeenNotifKeys(list.map { it.key }.toSet())
+                return
+            }
+            val fresh = list.filter { it.key !in seen }.take(3)
+            for (n in fresh) {
+                val title = when (n.action) {
+                    "không thích" -> "👎 ${n.actor} không thích bình luận của bạn"
+                    "trả lời" -> "↩️ ${n.actor} đã trả lời bạn"
+                    else -> "👍 ${n.actor} đã thích bình luận của bạn"
+                }
+                NotifyHelper.show(
+                    applicationContext, title, "${n.text}\n${n.time}",
+                    n.url, (n.key.hashCode() % 80000) + 40000
+                )
+            }
+            auth.saveSeenNotifKeys((list.map { it.key } + seen).take(60).toSet())
         } catch (_: Exception) { }
     }
 }

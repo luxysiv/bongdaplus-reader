@@ -35,6 +35,7 @@ fun AccountScreen(
     onRegister: () -> Unit,
     onSaved: () -> Unit,
     onOpenArticle: (Article) -> Unit = {},
+    onNotifs: () -> Unit = {},
 ) {
     val logged by auth.loggedIn.collectAsState(initial = false)
     val email by auth.email.collectAsState(initial = "")
@@ -108,6 +109,16 @@ fun AccountScreen(
                     headlineContent = { Text("Tin đã lưu") },
                     leadingContent = { Icon(Icons.Default.Bookmark, null) },
                     modifier = Modifier.clickable(onClick = onSaved)
+                )
+                HorizontalDivider()
+            }
+            // Thông báo member (lịch sử thật từ div#lstnoti)
+            item {
+                ListItem(
+                    headlineContent = { Text("Thông báo bình luận") },
+                    supportingContent = { Text(if (logged) "Ai thích / không thích bình luận của bạn • bấm để xem" else "Đăng nhập để xem lịch sử thông báo") },
+                    leadingContent = { Icon(Icons.Default.Notifications, null) },
+                    modifier = Modifier.clickable(onClick = onNotifs)
                 )
                 HorizontalDivider()
             }
@@ -209,6 +220,71 @@ fun AccountScreen(
                     supportingContent = { Text("Bóng Đá Plus Reader 1.0 • Nguồn tin: bongdaplus.vn") },
                     leadingContent = { Icon(Icons.Default.Info, null) }
                 )
+            }
+        }
+    }
+}
+
+// ---------- Lịch sử thông báo member (div#lstnoti thật) ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MemberNotifsScreen(
+    auth: AuthManager,
+    onBack: () -> Unit,
+    onOpen: (Article) -> Unit,
+    onLogin: () -> Unit,
+) {
+    val vm: NotifViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val items by vm.items.collectAsState()
+    val loading by vm.loading.collectAsState()
+    val logged by auth.loggedIn.collectAsState(initial = false)
+    LaunchedEffect(logged) {
+        vm.cookieProvider = { auth.currentCookies() }
+        vm.load()
+    }
+    Scaffold(topBar = {
+        TopAppBar(
+            title = { Text("Thông báo", fontWeight = FontWeight.Bold) },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } },
+            actions = { IconButton(onClick = { vm.load() }) { Icon(Icons.Default.Refresh, "Tải lại") } }
+        )
+    }) { pad ->
+        if (!logged) {
+            Box(Modifier.padding(pad).fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                    Text("🔔 Đăng nhập để xem ai đã thích / không thích bình luận của bạn.")
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = onLogin) { Text("Đăng nhập") }
+                }
+            }
+        } else if (loading && items.isEmpty()) {
+            Box(Modifier.padding(pad)) { LoadingSkeleton(5) }
+        } else if (items.isEmpty()) {
+            Box(Modifier.padding(pad).fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Chưa có thông báo nào. Bình luận được thích sẽ hiện ở đây.")
+            }
+        } else {
+            LazyColumn(Modifier.padding(pad).fillMaxSize()) {
+                items(items, key = { it.key }) { n ->
+                    ListItem(
+                        headlineContent = { Text(n.text, style = MaterialTheme.typography.bodyMedium) },
+                        supportingContent = { n.time.ifBlank { null }?.let { Text(it) } },
+                        leadingContent = {
+                            Box(modifier = Modifier.size(40.dp).clip(CircleShape)
+                                .background(if (n.action == "không thích") MaterialTheme.colorScheme.errorContainer
+                                else MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center) {
+                                Text(if (n.action == "không thích") "👎" else if (n.action == "trả lời") "↩️" else "👍")
+                            }
+                        },
+                        modifier = Modifier.clickable {
+                            val a = Article(BongDaPlusScraper.idFromUrl(n.url), n.text.take(80), n.url)
+                            onOpen(a)
+                        }
+                    )
+                    HorizontalDivider()
+                }
             }
         }
     }

@@ -50,6 +50,19 @@ data class Comment(
     val dislikes: Int = 0,
 )
 
+/**
+ * Thông báo member thật từ div#lstnoti (khi đã đăng nhập).
+ * VD: "Độc giả đã thích bình luận của bạn ở bài viết: Ronaldo..." + link tới #txtcomment_xxx.
+ */
+data class MemberNotification(
+    val key: String,       // actor + action + url + time để chống báo trùng
+    val actor: String,     // "Độc giả", "Hoang Cuong"...
+    val action: String,    // "thích", "không thích", "trả lời"...
+    val text: String,      // câu đầy đủ
+    val url: String,       // link bài + neo #txtcomment_
+    val time: String,      // "04 giờ trước"
+)
+
 /** Danh mục (slug lấy từ menu thật của bongdaplus.vn) */
 data class Category(val name: String, val slug: String)
 

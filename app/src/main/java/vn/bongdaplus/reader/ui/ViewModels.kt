@@ -226,3 +226,21 @@ class DetailViewModel : ViewModel() {
     }
 }
 /* (Chi tiết render native 100% — không dùng WebView.) */
+
+/** Lịch sử thông báo member thật (div#lstnoti) — ai thích/không thích bình luận của bạn */
+class NotifViewModel : ViewModel() {
+    var cookieProvider: () -> Map<String, String> = { emptyMap() }
+    private val _items = MutableStateFlow<List<MemberNotification>>(emptyList())
+    val items: StateFlow<List<MemberNotification>> = _items
+    private val _loading = MutableStateFlow(true)
+    val loading: StateFlow<Boolean> = _loading
+
+    fun load() {
+        viewModelScope.launch {
+            _loading.value = true
+            try { _items.value = BongDaPlusScraper.fetchMemberNotifications(cookiesOf(cookieProvider)) }
+            catch (_: Exception) { }
+            _loading.value = false
+        }
+    }
+}

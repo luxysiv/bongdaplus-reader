@@ -24,6 +24,7 @@ class AuthManager(private val ctx: Context) {
         val KEY_NOTIFY = booleanPreferencesKey("notify_enabled")
         val KEY_NOTIFY_COMMENTS = booleanPreferencesKey("notify_comments")
         val KEY_CMT_COUNTS = stringPreferencesKey("comment_counts_json")
+        val KEY_SEEN_NOTIFS = stringPreferencesKey("seen_notif_keys")
         const val LOGIN_URL = "https://member.bongdaplus.vn/Identity/Account/Login?returnUrl=%2F"
         const val REGISTER_URL = "https://member.bongdaplus.vn/Identity/Account/Register?returnUrl=%2F"
         const val HOME = "https://bongdaplus.vn/"
@@ -78,6 +79,15 @@ class AuthManager(private val ctx: Context) {
         val o = org.json.JSONObject()
         m.entries.take(60).forEach { o.put(it.key, it.value) }
         ctx.appPrefs.edit { it[KEY_CMT_COUNTS] = o.toString() }
+    }
+
+    /** Key các thông báo member đã thấy (để Worker chỉ báo cái mới từ div#lstnoti) */
+    suspend fun seenNotifKeys(): Set<String> {
+        val s = ctx.appPrefs.data.map { it[KEY_SEEN_NOTIFS] ?: "" }.first()
+        return s.split("|").filter { it.isNotBlank() }.toSet()
+    }
+    suspend fun saveSeenNotifKeys(keys: Set<String>) {
+        ctx.appPrefs.edit { it[KEY_SEEN_NOTIFS] = keys.take(60).joinToString("|") }
     }
 
     /** Cookie hiện tại để gắn vào Jsoup (đọc Premium) */

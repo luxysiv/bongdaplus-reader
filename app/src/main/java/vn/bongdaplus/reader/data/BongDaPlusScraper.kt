@@ -306,6 +306,39 @@ object BongDaPlusScraper {
         }
 
     /**
+     * Lịch sử thông báo member THẬT (xác thực từ file .mht của user):
+     * div#lstnoti > ul.lst > li.news > a[href*=txtcomment_] + span.info (thời gian).
+     * Mỗi item: "X đã thích / không thích bình luận của bạn ở bài viết: Y".
+     * Cần cookies đăng nhập, GET trang chủ là đủ vì khung notifier có ở mọi trang.
+     */
+    suspend fun fetchMemberNotifications(cookies: Map<String, String> = emptyMap()): List<MemberNotification> =
+        withContext(Dispatchers.IO) {
+            if (cookies.isEmpty()) return@withContext emptyList()
+            try {
+                val doc = Jsoup.connect("$BASE/").userAgent(UA).timeout(20000).cookies(cookies).get()
+                doc.select("div#lstnoti li.news").mapNotNull { li ->
+                    val a = li.selectFirst("a[href]") ?: return@mapNotNull null
+                    val href = a.attr("href").trim()
+                    if (href.isEmpty() || !href.contains("txtcomment_")) return@mapNotNull null
+                    val url = absUrl(href)
+                    val full = a.text().trim().replace(Regex("\\s+"), " ")
+                    if (full.isBlank()) return@mapNotNull null
+                    val actor = a.selectFirst("b")?.text()?.trim().ifNullOrBlank { "Ai đó" }
+                    val action = when {
+                        full.contains("không thích", true) -> "không thích"
+                        full.contains("thích", true) -> "thích"
+                        full.contains("trả lời", true) -> "trả lời"
+                        full.contains("duyệt", true) -> "duyệt"
+                        else -> "bình luận"
+                    }
+                    val time = li.selectFirst("span.info")?.text()?.trim() ?: ""
+                    val key = "$actor|$action|$url|$time".hashCode().toString() + "|" + url.hashCode()
+                    MemberNotification(key, actor, action, full, url, time)
+                }.distinctBy { it.key }.take(30)
+            } catch (_: Exception) { emptyList() }
+        }
+
+    /**
      * Thích / Không thích 1 bình luận (API thật từ bongdaplus.js).
      * POST /setCommentEmotion/{objectId}/{commentId}/1 (thích) hoặc /7 (không thích).
      */
