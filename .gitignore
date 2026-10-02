@@ -14,3 +14,7 @@ local.properties
 # Keystore — KHÔNG commit key ký app
 *.jks
 *.keystore
+
+# Snapshot trang web (.mht) — nặng, chỉ dùng phân tích tạm, không commit
+*.mht
+*.mhtml

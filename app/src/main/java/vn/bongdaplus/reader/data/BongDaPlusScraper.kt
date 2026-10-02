@@ -154,65 +154,56 @@ object BongDaPlusScraper {
             val title = doc.selectFirst("h1")?.text()?.trim()
                 ?: doc.selectFirst("meta[property=og:title]")?.attr("content") ?: "Bài viết"
             val ogImg = doc.selectFirst("meta[property=og:image]")?.attr("content")
-            val bodyEl = doc.selectFirst("div.content")
+            val bodyEl = doc.selectFirst("#postContent.content")
+                ?: doc.selectFirst("div.content")
                 ?: doc.selectFirst("div.article-content")
                 ?: doc.selectFirst("article")
                 ?: doc.body()
             bodyEl.select("script, style").remove()
             val blocks = if (bodyEl.tagName() == "body") emptyList() else parseBlocks(bodyEl)
             // tác giả + giờ từ JSON-LD NewsArticle (chuẩn nhất)
+            // Thực tế file .mht thật cho thấy site không còn render ld+json,
+            // chỉ có <meta name=author> chung + <time datetime>.
             val ld = doc.select("script[type=application/ld+json]").map { it.html() }
                 .firstOrNull { it.contains("NewsArticle") } ?: ""
             val author = Regex("\"name\"\\s*:\\s*\"([^\"]+)\"").find(
                 ld.substringAfter("\"author\"").take(300)
             )?.groupValues?.get(1)
-                ?: doc.selectFirst(".author-name, .author")?.text()?.trim()
+                ?: doc.selectFirst(".author-name, .author")?.text()?.trim()?.ifBlank { null }
+                ?: doc.selectFirst("meta[name=author]")?.attr("content")?.ifBlank { null }
             val published = Regex("\"datePublished\"\\s*:\\s*\"([^\"]+)\"").find(ld)?.groupValues?.get(1)
                 ?: doc.selectFirst("meta[property=article:published_time]")?.attr("content")
+                ?: doc.selectFirst("time[datetime]")?.attr("datetime")?.ifBlank { null }
                 ?: doc.selectFirst("time")?.text()?.trim()
-            val objectId = doc.selectFirst("#objectid")?.attr("value") ?: ""
-            val objectType = doc.selectFirst("#objecttype")?.attr("value") ?: "0"
-            val catSlug = doc.selectFirst("#catrefid")?.attr("value")?.ifBlank { null }
+            // .mht thật: không còn #objectid/#objecttype trong HTML tĩnh (render bằng JS).
+            // Fallback dùng id số đuôi URL (vd ...-5239382610.html) + objectType=1 (tin tức).
+            val rawOid = doc.selectFirst("#objectid")?.attr("value")?.trim() ?: ""
+            val rawOtype = doc.selectFirst("#objecttype")?.attr("value")?.trim() ?: ""
             val id = idFromUrl(url)
+            val objectId = rawOid.ifBlank { id.filter { it.isDigit() }.ifBlank { id } }
+            val objectType = rawOtype.ifBlank { "1" }
+            val catSlug = doc.selectFirst("#catrefid")?.attr("value")?.ifBlank { null }
             val base = Article(id, title, url, ogImg, catSlug)
+            // Ưu tiên API, fallback đếm inline từ .mht (a.emo.comment#ncmt_*, #numemo*)
             val emotion = try { fetchEmotion(objectId, objectType, cookies) } catch (_: Exception) { Emotion() }
+                .takeIf { it.comments > 0 || it.liked > 0 } ?: parseInlineEmotion(doc)
             ArticleDetail(base, author, published, bodyEl.html(), bodyEl.text().take(600),
                 blocks, objectId, objectType, emotion)
         }
 
-    /** Chỉ lấy objectId/objectType (nhẹ, cho worker đếm bình luận) */
-    suspend fun fetchObjectRef(url: String, cookies: Map<String, String> = emptyMap()): Pair<String, String>? =
-        withContext(Dispatchers.IO) {
-            try {
-                val doc = Jsoup.connect(url).userAgent(UA).timeout(20000).cookies(cookies).get()
-                val oid = doc.selectFirst("#objectid")?.attr("value") ?: return@withContext null
-                if (oid.isBlank()) return@withContext null
-                oid to (doc.selectFirst("#objecttype")?.attr("value") ?: "0")
-            } catch (_: Exception) { null }
-        }
+    /** Đếm inline từ HTML thật (file .mht): a.emo.comment#ncmt_*, span#numemo* */
+    fun parseInlineEmotion(doc: org.jsoup.nodes.Document): Emotion {
+        return try {
+            val cmtTxt = doc.selectFirst("a.emo.comment")?.text()?.filter { it.isDigit() } ?: ""
+            val likeTxt = doc.selectFirst("span[id^=numemo]")?.text()?.filter { it.isDigit() } ?: ""
+            Emotion(liked = likeTxt.toIntOrNull() ?: 0, comments = cmtTxt.toIntOrNull() ?: 0)
+        } catch (_: Exception) { Emotion() }
+    }
 
-    // ---------- Bình luận thật ----------
-
-    suspend fun fetchEmotion(objectId: String, objectType: String = "0",
-                             cookies: Map<String, String> = emptyMap()): Emotion =
-        withContext(Dispatchers.IO) {
-            if (objectId.isBlank()) return@withContext Emotion()
-            val body = Jsoup.connect("$BASE/getNewsEmotion/$objectId/$objectType")
-                .userAgent(UA).timeout(15000).cookies(cookies)
-                .ignoreContentType(true).get().body().text()
-            val o = JSONObject(body).optJSONObject("newsUserActivity") ?: return@withContext Emotion()
-            Emotion(o.optInt("liked"), o.optInt("heart"), o.optInt("wow"), o.optInt("comments"))
-        }
-
-    suspend fun fetchComments(objectId: String, objectType: String = "0", page: Int = 1,
-                              cookies: Map<String, String> = emptyMap()): List<Comment> =
-        withContext(Dispatchers.IO) {
-            if (objectId.isBlank()) return@withContext emptyList()
-            val html = Jsoup.connect("$BASE/binh-luan/$objectId/$objectType/$page/0")
-                .userAgent(UA).timeout(15000).cookies(cookies)
-                .ignoreContentType(true).get().body().html()
-            val frag = Jsoup.parseBodyFragment(html)
-            frag.select("li.comment").mapNotNull { li ->
+    /** Bình luận render sẵn trong #NewsComments (file .mht Ronaldo) — dùng khi API /binh-luan lỗi */
+    fun parseInlineComments(doc: org.jsoup.nodes.Document): List<Comment> {
+        return try {
+            doc.select("#NewsComments li.comment").mapNotNull { li ->
                 val likeA = li.selectFirst("a[id^=btnlikecmt_]")
                 val cid = likeA?.attr("id")?.substringAfter("btnlikecmt_") ?: return@mapNotNull null
                 val name = li.selectFirst("a.member")?.text()?.trim().ifNullOrBlank { "Bạn đọc" }
@@ -221,9 +212,79 @@ object BongDaPlusScraper {
                 val text = li.selectFirst("p.summ")?.text()?.trim() ?: return@mapNotNull null
                 if (text.isBlank()) return@mapNotNull null
                 Comment(cid, name, time, text,
-                    li.selectFirst("span[id^=thumup]")?.text()?.toIntOrNull() ?: 0,
-                    li.selectFirst("span[id^=thumdw]")?.text()?.toIntOrNull() ?: 0)
+                    li.selectFirst("span[id^=thumup]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
+                    li.selectFirst("span[id^=thumdw]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0)
             }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /** Chỉ lấy objectId/objectType (nhẹ, cho worker đếm bình luận) */
+    suspend fun fetchObjectRef(url: String, cookies: Map<String, String> = emptyMap()): Pair<String, String>? =
+        withContext(Dispatchers.IO) {
+            try {
+                val doc = Jsoup.connect(url).userAgent(UA).timeout(20000).cookies(cookies).get()
+                val oid = doc.selectFirst("#objectid")?.attr("value")?.trim()
+                    ?.ifBlank { null } ?: idFromUrl(url).filter { it.isDigit() }
+                if (oid.isBlank()) return@withContext null
+                val otype = doc.selectFirst("#objecttype")?.attr("value")?.trim()?.ifBlank { null } ?: "1"
+                oid to otype
+            } catch (_: Exception) {
+                // Mất mạng / timeout vẫn trả fallback từ URL để Worker không bỏ qua
+                try {
+                    val fb = idFromUrl(url).filter { it.isDigit() }
+                    if (fb.isNotBlank()) fb to "1" else null
+                } catch (_: Exception) { null }
+            }
+        }
+
+    // ---------- Bình luận thật ----------
+
+    suspend fun fetchEmotion(objectId: String, objectType: String = "1",
+                             cookies: Map<String, String> = emptyMap()): Emotion =
+        withContext(Dispatchers.IO) {
+            if (objectId.isBlank()) return@withContext Emotion()
+            val types = listOf(objectType, if (objectType == "1") "0" else "1").distinct()
+            for (t in types) {
+                try {
+                    val body = Jsoup.connect("$BASE/getNewsEmotion/$objectId/$t")
+                        .userAgent(UA).timeout(15000).cookies(cookies)
+                        .ignoreContentType(true).get().body().text()
+                    val o = JSONObject(body).optJSONObject("newsUserActivity") ?: continue
+                    val e = Emotion(o.optInt("liked"), o.optInt("heart"), o.optInt("wow"), o.optInt("comments"))
+                    if (e.comments > 0 || e.liked > 0 || e.heart > 0) return@withContext e
+                    if (t == types.last()) return@withContext e
+                } catch (_: Exception) { }
+            }
+            Emotion()
+        }
+
+    suspend fun fetchComments(objectId: String, objectType: String = "1", page: Int = 1,
+                              cookies: Map<String, String> = emptyMap()): List<Comment> =
+        withContext(Dispatchers.IO) {
+            if (objectId.isBlank()) return@withContext emptyList()
+            val types = listOf(objectType, if (objectType == "1") "0" else "1").distinct()
+            for (t in types) {
+                try {
+                    val html = Jsoup.connect("$BASE/binh-luan/$objectId/$t/$page/0")
+                        .userAgent(UA).timeout(15000).cookies(cookies)
+                        .ignoreContentType(true).get().body().html()
+                    val frag = Jsoup.parseBodyFragment(html)
+                    val out = frag.select("li.comment").mapNotNull { li ->
+                        val likeA = li.selectFirst("a[id^=btnlikecmt_]")
+                        val cid = likeA?.attr("id")?.substringAfter("btnlikecmt_") ?: return@mapNotNull null
+                        val name = li.selectFirst("a.member")?.text()?.trim().ifNullOrBlank { "Bạn đọc" }
+                        val info = li.selectFirst("div.info")?.text() ?: ""
+                        val time = info.substringAfter(name).trim().ifBlank { "" }
+                        val text = li.selectFirst("p.summ")?.text()?.trim() ?: return@mapNotNull null
+                        if (text.isBlank()) return@mapNotNull null
+                        Comment(cid, name, time, text,
+                            li.selectFirst("span[id^=thumup]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
+                            li.selectFirst("span[id^=thumdw]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0)
+                    }
+                    if (out.isNotEmpty()) return@withContext out
+                } catch (_: Exception) { }
+            }
+            emptyList()
         }
 
     /** Gửi bình luận thật (cần cookie login). True = server đã nhận (chờ duyệt). */
