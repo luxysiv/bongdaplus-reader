@@ -9,7 +9,7 @@ import org.json.JSONObject
 
 /**
  * Theo dõi bài user đã bình luận để báo chi tiết, kể cả khi chưa bấm Lưu.
- * Lưu 1 JSON: { articleId: {u,title,seen:[commentId...], mine:[text...]} }
+ * Lưu 1 JSON dạng: articleId -> (u, title, seenIds, mineTexts).
  * - track(): gọi ngay sau khi gửi bình luận thành công.
  * - seenIds()/saveSeenIds(): để Worker so sánh và chỉ báo cái mới.
  */
