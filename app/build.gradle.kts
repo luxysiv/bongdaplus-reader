@@ -15,8 +15,35 @@ android {
         versionName = "1.0"
     }
 
+    // Keystore dùng chung cho cả debug + release (file thật do CI giải mã
+    // từ secret ANDROID_KEYSTORE_BASE64, local dev tự có file tương ứng).
+    val ksFile = rootProject.file("bongdaplus-release.p12")
+    val ksPass = System.getenv("KEYSTORE_PASSWORD")
+        ?: project.findProperty("KEYSTORE_PASSWORD")?.toString().orEmpty()
+    val ksAlias = System.getenv("KEY_ALIAS")
+        ?: project.findProperty("KEY_ALIAS")?.toString()?.ifBlank { null } ?: "bongdaplus"
+    val ksKeyPass = System.getenv("KEY_PASSWORD")
+        ?: project.findProperty("KEY_PASSWORD")?.toString()?.ifBlank { null } ?: ksPass
+    val hasKs = ksFile.exists() && ksPass.isNotEmpty()
+
+    signingConfigs {
+        create("shared") {
+            if (hasKs) {
+                storeFile = ksFile
+                storePassword = ksPass
+                keyAlias = ksAlias
+                keyPassword = ksKeyPass
+                storeType = "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (hasKs) signingConfig = signingConfigs.getByName("shared")
+        }
         release {
+            if (hasKs) signingConfig = signingConfigs.getByName("shared")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

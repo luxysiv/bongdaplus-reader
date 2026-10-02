@@ -14,6 +14,8 @@ local.properties
 # Keystore — KHÔNG commit key ký app
 *.jks
 *.keystore
+*.p12
+bongdaplus-release.p12
 
 # Snapshot trang web (.mht) — nặng, chỉ dùng phân tích tạm, không commit
 *.mht

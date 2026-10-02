@@ -30,13 +30,31 @@ jobs:
         with:
           gradle-version: 8.7
 
-      - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+      # Giải mã keystore dùng chung debug + release từ secret
+      - name: Decode Keystore
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > bongdaplus-release.p12
         working-directory: ${{ github.workspace }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
-      - name: Upload APK
+      - name: Build Debug + Release APK (cùng keystore)
+        run: gradle assembleDebug assembleRelease --stacktrace
+        working-directory: ${{ github.workspace }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: BongDaPlus-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BongDaPlus-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          retention-days: 90
