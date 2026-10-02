@@ -28,6 +28,9 @@ class AuthManager(private val ctx: Context) {
         const val LOGIN_URL = "https://member.bongdaplus.vn/Identity/Account/Login?returnUrl=%2F"
         const val REGISTER_URL = "https://member.bongdaplus.vn/Identity/Account/Register?returnUrl=%2F"
         const val HOME = "https://bongdaplus.vn/"
+        /** URL handshake SSO: mở top-level, member server tự đẩy token về bongdaplus.vn */
+        const val SSO_LOGIN_URL =
+            "https://member.bongdaplus.vn/Identity/Account/Login?ReturnUrl=%2FHome%2FLoginFromBongdaplus"
     }
 
     val loggedIn: Flow<Boolean> = ctx.appPrefs.data.map { it[KEY_LOGGED] == true }

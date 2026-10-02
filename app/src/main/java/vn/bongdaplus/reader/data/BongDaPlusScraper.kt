@@ -345,6 +345,8 @@ object BongDaPlusScraper {
             try {
                 val res = Jsoup.connect("$BASE/postcomment/")
                     .userAgent(UA).timeout(15000).cookies(cookies)
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .header("Origin", BASE).referrer("$BASE/")
                     .data("objectid", objectId, "objecttype", objectType,
                         "parentid", parentId, "replyid", replyId,
                         "replyname", replyName, "comment", text)
@@ -436,6 +438,8 @@ object BongDaPlusScraper {
                 val type = if (like) "1" else "7"
                 val res = Jsoup.connect("$BASE/setCommentEmotion/$objectId/$commentId/$type")
                     .userAgent(UA).timeout(15000).cookies(cookies)
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .header("Origin", BASE).referrer("$BASE/")
                     .ignoreContentType(true).post()
                 !isLoginPage(res.body().text())
             } catch (_: Exception) { false }
@@ -452,6 +456,8 @@ object BongDaPlusScraper {
             try {
                 val res = Jsoup.connect("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType")
                     .userAgent(UA).timeout(15000).cookies(cookies)
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .header("Origin", BASE).referrer("$BASE/")
                     .ignoreContentType(true).post()
                 !isLoginPage(res.body().text())
             } catch (_: Exception) { false }

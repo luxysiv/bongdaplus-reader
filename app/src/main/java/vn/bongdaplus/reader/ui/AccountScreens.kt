@@ -369,14 +369,45 @@ private fun AuthWebViewScreen(
     val scope = rememberCoroutineScope()
     var status by remember(url) { mutableStateOf("Đang mở $title BongdaPlus…") }
     // CookieManager là singleton dùng chung toàn app (mọi màn hình/WebView/Jsoup
-    // đều đọc cùng 1 kho), nhưng phiên member và phiên site là 2 domain khác nhau:
-    // login member xong PHẢI mở bongdaplus.vn một lần để site handshake SSO
-    // (iframe LoginFromBongdaplus) rồi mới có cookie gửi bình luận được.
+    // đều đọc cùng 1 kho), nhưng phiên member và phiên site là 2 domain khác nhau.
+    // Trang chủ nhúng 2 iframe handshake:
+    //   Login?ReturnUrl=/Home/LoginFromBongdaplus (+ CommentLoginFromBongdaplus).
     // Không tin cookie mù mờ nữa: đọc thẳng id user trong DOM (input#txtUserid,
     // form Logout, chữ "Xin chào ...") rồi mới coi là đã đăng nhập.
-    var ssoTried by remember(url) { mutableStateOf(false) }
+    // Trình tự đồng bộ: trang member -> mở URL Login-from top-level (server tự
+    // đẩy token về bongdaplus.vn) -> mở trang chủ (iframe handshake) + chờ lại.
+    var ssoStep by remember(url) { mutableStateOf(0) }
+    var recheckDone by remember(url) { mutableStateOf(false) }
     var finished by remember(url) { mutableStateOf(false) }
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
+
+    fun finishSuccess(name: String) {
+        if (finished) return
+        finished = true
+        status = "✅ Thành công" +
+            (if (name.isNotBlank()) " ($name)" else "") + "! Đang lưu…"
+        scope.launch { auth.markLoggedIn(name); onDone() }
+    }
+
+    fun syncSite(view: WebView, name: String) {
+        // Tải top-level URL handshake: member server thấy đã login sẽ tự
+        // chuyển về bongdaplus.vn kèm token, khỏi phụ thuộc third-party cookie.
+        when (ssoStep) {
+            0 -> {
+                ssoStep = 1
+                status = "Đã đăng nhập" +
+                    (if (name.isNotBlank()) " ($name)" else "") +
+                    ", đang đồng bộ sang BongdaPlus (1/2)…"
+                view.loadUrl(AuthManager.SSO_LOGIN_URL)
+            }
+            1 -> {
+                ssoStep = 2
+                status = "Đang đồng bộ sang BongdaPlus (2/2)…"
+                view.loadUrl(AuthManager.HOME)
+            }
+            else -> finishSuccess(name) // đã thử hết, giữ login member
+        }
+    }
 
     fun probeLogin(view: WebView, pageUrl: String) {
         // uid|fullname|hello|hasLogout — input#txtUserid có giá trị khi đã login
@@ -404,28 +435,18 @@ private fun AuthWebViewScreen(
             val cookieLogged = auth.hasMemberCookie() || auth.hasSiteCookie()
             val isMemberPage = pageUrl.contains("member.bongdaplus.vn")
             // Phiên site (uid trên trang bongdaplus.vn / cookie site) mới gửi bình luận được.
-            // Nếu chỉ có phiên member, thử SSO 1 lần; vẫn không có thì cứ lưu login
-            // member (Jsoup gửi kèm cookie member, backend chung key có thể vẫn nhận).
-            val siteOk = (uid.isNotBlank() || hasLogout || auth.hasSiteCookie()) && !isMemberPage
+            val siteOk = !isMemberPage && (uid.isNotBlank() || hasLogout || auth.hasSiteCookie())
             when {
-                siteOk -> {
-                    finished = true
-                    status = "✅ Thành công" +
-                        (if (nameGuess.isNotBlank()) " ($nameGuess)" else "") + "! Đang lưu…"
-                    scope.launch { auth.markLoggedIn(nameGuess); onDone() }
-                }
-                (domLogged || cookieLogged) && isMemberPage && !ssoTried -> {
-                    ssoTried = true
-                    status = "Đã đăng nhập" +
-                        (if (nameGuess.isNotBlank()) " ($nameGuess)" else "") +
-                        ", đang đồng bộ sang BongdaPlus…"
-                    view.loadUrl(AuthManager.HOME)
-                }
+                siteOk -> finishSuccess(nameGuess)
+                (domLogged || cookieLogged) && isMemberPage -> syncSite(view, nameGuess)
                 domLogged || cookieLogged -> {
-                    finished = true
-                    status = "✅ Thành công" +
-                        (if (nameGuess.isNotBlank()) " ($nameGuess)" else "") + "! Đang lưu…"
-                    scope.launch { auth.markLoggedIn(nameGuess); onDone() }
+                    // Trang site nhưng chưa thấy phiên site: cho iframe handshake
+                    // thêm thời gian rồi kiểm tra lại 1 lần trước khi chốt.
+                    if (!recheckDone) {
+                        recheckDone = true
+                        status = "Đang đồng bộ phiên, chờ chút…"
+                        view.postDelayed({ if (!finished) probeLogin(view, pageUrl) }, 3000)
+                    } else finishSuccess(nameGuess)
                 }
                 else -> status = "Nhập Email + Mật khẩu (hoặc Google/Apple) để tiếp tục…"
             }
