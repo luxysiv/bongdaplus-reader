@@ -462,61 +462,95 @@ object BongDaPlusScraper {
 
     /**
      * Thích / Không thích 1 bình luận (OkHttp + URL cuối).
-     * Endpoint trả rỗng khi thành công nên chỉ cần: không bounce login + HTTP 200.
+     * Chỉ báo thành công khi đọc lại thấy số đếm ĐỔI so với trước khi bấm
+     * (thử lại 1 lần sau 2 giây) — hết chuyện app +1 mà web không nhận.
      */
     suspend fun setCommentEmotion(objectId: String, commentId: String, like: Boolean,
                                   cookies: Map<String, String>,
-                                  pageUrl: String = "$BASE/"): Boolean =
+                                  pageUrl: String = "$BASE/",
+                                  objectType: String = "1"): Boolean =
         withContext(Dispatchers.IO) {
             val type = if (like) "1" else "7"
-            // 1) OkHttp (phiên thật)
-            try {
-                Http.postForm("$BASE/setCommentEmotion/$objectId/$commentId/$type",
-                    emptyMap(), pageUrl)?.let { r ->
-                    if (r.bouncedToLogin()) return@withContext false
-                    if (r.code == 200) return@withContext true
-                    return@withContext false
-                }
-            } catch (_: Exception) { }
-            // 2) Jsoup fallback (chỉ khi OkHttp lỗi mạng)
-            if (cookies.isEmpty()) return@withContext false
-            try {
-                val res = Jsoup.connect("$BASE/setCommentEmotion/$objectId/$commentId/$type")
-                    .userAgent(UA).timeout(15000).cookies(cookies)
-                    .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Origin", BASE).referrer(pageUrl)
-                    .ignoreContentType(true).post()
-                !isLoginPage(res.body().text())
-            } catch (_: Exception) { false }
+            // Mốc trước khi bấm (để so sánh; không đọc được thì tin HTTP 200)
+            val before = try {
+                fetchComments(objectId, objectType, 1, cookies)
+                    .firstOrNull { it.id == commentId }
+            } catch (_: Exception) { null }
+            // 1) OkHttp POST đúng 1 lần (gửi lại sẽ bật/tắt liên tục)
+            val postedOk = try {
+                val r = Http.postForm("$BASE/setCommentEmotion/$objectId/$commentId/$type",
+                    emptyMap(), pageUrl) ?: return@withContext jsoupVoteOnce(
+                    "$BASE/setCommentEmotion/$objectId/$commentId/$type", cookies, pageUrl)
+                if (r.bouncedToLogin() || r.code != 200) return@withContext false
+                true
+            } catch (_: Exception) {
+                return@withContext jsoupVoteOnce(
+                    "$BASE/setCommentEmotion/$objectId/$commentId/$type", cookies, pageUrl)
+            }
+            if (!postedOk) return@withContext false
+            if (before == null) return@withContext true // không có mốc: tin HTTP 200
+            // 2) Xác minh số đếm đổi (thử lại 1 lần sau 2 giây)
+            repeat(2) { attempt ->
+                if (attempt == 1) try { kotlinx.coroutines.delay(2000) } catch (_: Exception) { }
+                val after = try {
+                    fetchComments(objectId, objectType, 1, cookies)
+                        .firstOrNull { it.id == commentId }
+                } catch (_: Exception) { null }
+                if (after != null &&
+                    (after.likes != before.likes || after.dislikes != before.dislikes)
+                ) return@withContext true
+            }
+            false
         }
 
+    /** Jsoup thử POST vote 1 lần duy nhất (chỉ khi OkHttp lỗi mạng). */
+    private suspend fun jsoupVoteOnce(
+        url: String, cookies: Map<String, String>, referer: String,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (cookies.isEmpty()) return@withContext false
+        try {
+            val res = Jsoup.connect(url)
+                .userAgent(UA).timeout(15000).cookies(cookies)
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("Origin", BASE).referrer(referer)
+                .ignoreContentType(true).post()
+            !isLoginPage(res.body().text())
+        } catch (_: Exception) { false }
+    }
+
     /**
-     * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow (theo bongdaplus.js).
-     * POST /setNewsEmotion/{objectId}/{objectType}/{emotionType}
+     * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow.
+     * Chỉ báo thành công khi đọc lại thấy số đếm ĐỔI (thử lại 1 lần sau 2 giây).
      */
     suspend fun setNewsEmotion(objectId: String, objectType: String, emotionType: Int,
                                 cookies: Map<String, String>,
                                 pageUrl: String = "$BASE/"): Boolean =
         withContext(Dispatchers.IO) {
-            // 1) OkHttp (phiên thật)
-            try {
-                Http.postForm("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType",
-                    emptyMap(), pageUrl)?.let { r ->
-                    if (r.bouncedToLogin()) return@withContext false
-                    if (r.code == 200) return@withContext true
-                    return@withContext false
-                }
-            } catch (_: Exception) { }
-            // 2) Jsoup fallback (chỉ khi OkHttp lỗi mạng)
-            if (cookies.isEmpty()) return@withContext false
-            try {
-                val res = Jsoup.connect("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType")
-                    .userAgent(UA).timeout(15000).cookies(cookies)
-                    .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Origin", BASE).referrer(pageUrl)
-                    .ignoreContentType(true).post()
-                !isLoginPage(res.body().text())
-            } catch (_: Exception) { false }
+            fun sig(e: Emotion) = e.liked + e.heart + e.wow
+            val before = try { sig(fetchEmotion(objectId, objectType, cookies)) }
+            catch (_: Exception) { -1 }
+            // 1) OkHttp POST đúng 1 lần
+            val postedOk = try {
+                val r = Http.postForm("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType",
+                    emptyMap(), pageUrl)
+                    ?: return@withContext jsoupVoteOnce(
+                        "$BASE/setNewsEmotion/$objectId/$objectType/$emotionType", cookies, pageUrl)
+                if (r.bouncedToLogin() || r.code != 200) return@withContext false
+                true
+            } catch (_: Exception) {
+                return@withContext jsoupVoteOnce(
+                    "$BASE/setNewsEmotion/$objectId/$objectType/$emotionType", cookies, pageUrl)
+            }
+            if (!postedOk) return@withContext false
+            if (before < 0) return@withContext true // không có mốc: tin HTTP 200
+            // 2) Xác minh tổng cảm xúc đổi
+            repeat(2) { attempt ->
+                if (attempt == 1) try { kotlinx.coroutines.delay(2000) } catch (_: Exception) { }
+                val after = try { sig(fetchEmotion(objectId, objectType, cookies)) }
+                catch (_: Exception) { -1 }
+                if (after >= 0 && after != before) return@withContext true
+            }
+            false
         }
 
     /**

@@ -164,38 +164,36 @@ class DetailViewModel : ViewModel() {
         }
     }
 
-    /** Thích / Bỏ thích 1 bình luận (cần đăng nhập). Cập nhật số ngay trên UI. */
+    /** Thích / Bỏ thích 1 bình luận: chỉ hiện số mới sau khi server xác nhận. */
     fun reactComment(commentId: String, like: Boolean) {
         val d = _detail.value ?: return
         viewModelScope.launch {
             val ok = try {
-                BongDaPlusScraper.setCommentEmotion(d.objectId, commentId, like, cookiesOf(cookieProvider), d.article.url)
+                BongDaPlusScraper.setCommentEmotion(
+                    d.objectId, commentId, like, cookiesOf(cookieProvider),
+                    d.article.url, d.objectType)
             } catch (_: Exception) { false }
-            if (ok) {
-                _comments.value = _comments.value.map {
-                    if (it.id != commentId) it
-                    else if (like) it.copy(likes = it.likes + 1) else it.copy(dislikes = it.dislikes + 1)
-                }
-                val cur = _myVotes.value.toMutableMap()
-                cur[commentId] = if (like) 1 else 7
-                _myVotes.value = cur
-            }
+            if (ok) loadComments() // tải lại số thật từ server, không cộng ảo
+            else _sendMsg.value = "👍/👎 thất bại — server chưa nhận, thử lại sau."
         }
     }
 
-    /** Cảm xúc bài viết: 1=👍 2=❤️ 4=😮 (cần đăng nhập, bấm lại để đổi). */
+    /** Cảm xúc bài viết: chỉ hiện số mới sau khi server xác nhận. */
     fun reactArticle(emotionType: Int) {
         val d = _detail.value ?: return
         viewModelScope.launch {
             try {
-                if (BongDaPlusScraper.setNewsEmotion(d.objectId, d.objectType, emotionType, cookiesOf(cookieProvider), d.article.url)) {
-                    val e = d.emotion
-                    val bumped = when (emotionType) {
-                        1 -> e.copy(liked = e.liked + 1)
-                        2 -> e.copy(heart = e.heart + 1)
-                        else -> e.copy(wow = e.wow + 1)
-                    }
-                    _detail.value = d.copy(emotion = bumped)
+                val ok = BongDaPlusScraper.setNewsEmotion(
+                    d.objectId, d.objectType, emotionType,
+                    cookiesOf(cookieProvider), d.article.url)
+                if (ok) {
+                    val e = try {
+                        BongDaPlusScraper.fetchEmotion(
+                            d.objectId, d.objectType, cookiesOf(cookieProvider))
+                    } catch (_: Exception) { d.emotion }
+                    _detail.value = _detail.value?.copy(emotion = e) ?: d.copy(emotion = e)
+                } else {
+                    _sendMsg.value = "Cảm xúc thất bại — server chưa nhận, thử lại sau."
                 }
             } catch (_: Exception) { }
         }

@@ -31,11 +31,15 @@ import vn.bongdaplus.reader.data.*
 
 // ---------- Chẩn đoán phiên đăng nhập (không lộ giá trị cookie) ----------
 
-private suspend fun runSessionDiag(cookieNames: List<String>): String {
+private suspend fun runSessionDiag(auth: AuthManager): String {
     val sb = StringBuilder()
     try {
-        sb.appendLine("Cookie trong máy (${cookieNames.size}): " +
-            (cookieNames.sorted().take(25).joinToString(", ").ifBlank { "(trống)" }))
+        val siteCk = auth.cookieNamesOf("https://bongdaplus.vn")
+        val memberCk = auth.cookieNamesOf("https://member.bongdaplus.vn")
+        sb.appendLine("Cookie site (${siteCk.size}): " +
+            (siteCk.sorted().take(25).joinToString(", ").ifBlank { "(trống)" }))
+        sb.appendLine("Cookie member (${memberCk.size}): " +
+            (memberCk.sorted().take(25).joinToString(", ").ifBlank { "(trống)" }))
         sb.appendLine("HTTP: OkHttp + cookie WebView login")
         // Trang chủ site: uid tĩnh + số dòng lstnoti + số tin
         val home = try { Http.get("https://bongdaplus.vn/") } catch (_: Exception) { null }
@@ -190,7 +194,7 @@ fun AccountScreen(
                             diagRunning = true
                             diagText = "Đang kiểm tra…"
                             scope.launch {
-                                diagText = runSessionDiag(auth.currentCookies().keys.toList())
+                                diagText = runSessionDiag(auth)
                                 diagRunning = false
                             }
                         }

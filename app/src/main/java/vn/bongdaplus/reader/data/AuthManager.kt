@@ -120,6 +120,7 @@ class AuthManager(private val ctx: Context) {
             val c1 = cm.getCookie("https://member.bongdaplus.vn") ?: ""
             val c2 = cm.getCookie("https://bongdaplus.vn") ?: ""
             (c1 + c2).contains(".AspNetCore.Identity.Application", ignoreCase = true) ||
+                (c1 + c2).contains("BongdaplusMember", ignoreCase = true) ||
                 (c1 + c2).contains("Identity", ignoreCase = true)
         } catch (_: Exception) { false }
     }
@@ -129,6 +130,7 @@ class AuthManager(private val ctx: Context) {
         return try {
             val c = CookieManager.getInstance().getCookie("https://member.bongdaplus.vn") ?: ""
             c.contains(".AspNetCore.Identity.Application", ignoreCase = true) ||
+                c.contains("BongdaplusMember", ignoreCase = true) ||
                 c.contains("Identity", ignoreCase = true)
         } catch (_: Exception) { false }
     }
@@ -142,8 +144,21 @@ class AuthManager(private val ctx: Context) {
         return try {
             val c = CookieManager.getInstance().getCookie("https://bongdaplus.vn") ?: ""
             c.contains(".AspNetCore.Identity.Application", ignoreCase = true) ||
+                c.contains("BongdaplusMember", ignoreCase = true) ||
                 c.contains("Identity", ignoreCase = true)
         } catch (_: Exception) { false }
+    }
+
+    /** Tên cookie từng domain (chẩn đoán, không lộ giá trị) */
+    fun cookieNamesOf(hostUrl: String): List<String> {
+        return try {
+            val raw = CookieManager.getInstance().getCookie(hostUrl)
+                ?.takeIf { it.isNotBlank() } ?: return emptyList()
+            raw.split(";").mapNotNull {
+                val n = it.trim().substringBefore("=").trim()
+                if (n.isNotBlank()) n else null
+            }
+        } catch (_: Exception) { emptyList() }
     }
 
     /** Đẩy cookie WebView xuống bộ nhớ chung để Jsoup/màn hình khác đọc được ngay */
