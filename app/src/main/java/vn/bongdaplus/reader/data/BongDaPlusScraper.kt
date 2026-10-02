@@ -429,11 +429,79 @@ object BongDaPlusScraper {
         }
 
     /**
+     * Lịch sử thông báo member: ưu tiên API JSON thật (GET /GetNotification),
+     * fallback div#lstnoti trong HTML trang chủ khi API rỗng/lỗi.
+     * Key giữ cùng công thức cũ (actor|action|url|time) để Worker không báo trùng.
+     */
+    suspend fun fetchMemberNotifications(cookies: Map<String, String> = emptyMap()): List<MemberNotification> =
+        withContext(Dispatchers.IO) {
+            if (cookies.isEmpty()) return@withContext emptyList()
+            try {
+                val api = fetchNotificationsApi(cookies)
+                if (api.isNotEmpty()) return@withContext api
+            } catch (_: Exception) { }
+            fetchMemberNotificationsDiv(cookies)
+        }
+
+    /** API JSON thật: GET /GetNotification (XHR) -> mảng thông báo. Parse chịu lỗi tên field. */
+    suspend fun fetchNotificationsApi(cookies: Map<String, String>): List<MemberNotification> =
+        withContext(Dispatchers.IO) {
+            val bust = System.currentTimeMillis()
+            val body = Http.get("$BASE/GetNotification?t=$bust", "$BASE/", xhr = true)?.html
+                ?: Jsoup.connect("$BASE/GetNotification")
+                    .userAgent(UA).timeout(15000).cookies(cookies)
+                    .header("Accept", "application/json, text/javascript, */*; q=0.01")
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .ignoreContentType(true).get().body().text()
+            val arr = try {
+                val t = body.trim()
+                when {
+                    t.startsWith("[") -> org.json.JSONArray(t)
+                    t.startsWith("{") -> {
+                        val o = org.json.JSONObject(t)
+                        o.optJSONArray("data") ?: o.optJSONArray("items")
+                        ?: o.optJSONArray("notifications") ?: org.json.JSONArray()
+                    }
+                    else -> org.json.JSONArray()
+                }
+            } catch (_: Exception) { return@withContext emptyList() }
+            fun str(o: org.json.JSONObject, vararg keys: String): String {
+                for (k in keys) {
+                    val v = o.optString(k, "").trim()
+                    if (v.isNotBlank() && v != "null") return v
+                }
+                return ""
+            }
+            val out = mutableListOf<MemberNotification>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val text = str(o, "content", "message", "text", "title", "description", "body", "Content", "Message", "Title")
+                if (text.isBlank()) continue
+                val actor = str(o, "actor", "actorName", "from", "fromUser", "userName", "sender", "ActorName", "UserName")
+                    .ifBlank { "Ai đó" }
+                val href = str(o, "url", "link", "href", "postUrl", "articleUrl", "targetUrl", "Url", "Link")
+                val url = if (href.isBlank()) "" else absUrl(href)
+                val time = str(o, "time", "timeAgo", "createdTime", "createdAt", "date", "sendTime", "displayTime", "Time")
+                val action = when {
+                    text.contains("không thích", true) -> "không thích"
+                    text.contains("thích", true) -> "thích"
+                    text.contains("trả lời", true) -> "trả lời"
+                    text.contains("duyệt", true) -> "duyệt"
+                    else -> "bình luận"
+                }
+                // Cùng công thức key với bản div để không báo trùng sau khi đổi nguồn
+                val key = "$actor|$action|$url|$time".hashCode().toString() + "|" + url.hashCode()
+                out += MemberNotification(key, actor, action, text.replace(Regex("\\s+"), " "), url, time)
+            }
+            out.distinctBy { it.key }.take(30)
+        }
+
+    /**
      * Lịch sử thông báo member (div#lstnoti): mỗi item
      * "X đã thích / không thích bình luận của bạn ở bài viết: Y" + link #txtcomment_ + giờ.
      * Cần cookies đăng nhập (gộp cả member.bongdaplus.vn).
      */
-    suspend fun fetchMemberNotifications(cookies: Map<String, String> = emptyMap()): List<MemberNotification> =
+    suspend fun fetchMemberNotificationsDiv(cookies: Map<String, String> = emptyMap()): List<MemberNotification> =
         withContext(Dispatchers.IO) {
             if (cookies.isEmpty()) return@withContext emptyList()
             try {

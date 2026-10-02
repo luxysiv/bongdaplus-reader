@@ -66,12 +66,16 @@ object Http {
                 finalUrl.contains("Account/Register", ignoreCase = true)
     }
 
-    suspend fun get(url: String, referer: String? = null): Page? = withContext(Dispatchers.IO) {
+    suspend fun get(url: String, referer: String? = null, xhr: Boolean = false): Page? = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder().url(url).header("User-Agent", UA)
-                .header("Accept", "text/html,application/xhtml+xml")
+                .header("Accept", if (xhr) "application/json, text/javascript, */*; q=0.01"
+                else "text/html,application/xhtml+xml")
                 .header("Accept-Language", "vi-VN,vi;q=0.9")
-                .apply { referer?.let { header("Referer", it) } }
+                .apply {
+                    referer?.let { header("Referer", it) }
+                    if (xhr) header("X-Requested-With", "XMLHttpRequest")
+                }
                 .build()
             client.newCall(req).execute().use { res ->
                 Page(res.request.url.toString(), res.code, res.body?.string().orEmpty())
