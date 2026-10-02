@@ -545,10 +545,72 @@ object BongDaPlusScraper {
         }
 
     /**
-     * Trang HTML đăng nhập thật (dùng cho fallback Jsoup). Chỉ coi là login khi
-     * body DÀI như 1 trang web (>5KB) và có dấu hiệu form login — để API nhỏ
-     * trả chữ "đăng nhập" trong nội dung cũng không bị kết luận sai.
+     * Đăng nhập member bằng form Email/Mật khẩu qua OkHttp (không cần WebView).
+     * 1) GET trang login lấy antiforgery token (cookie phiên tự vào jar chung).
+     * 2) POST credentials, theo redirect: về lại Login = sai TK/MK.
+     * 3) Chạy handshake site (iframe LoginFrom + trang chủ) rồi kiểm tra phiên site
+     *    bằng input#txtUserid tĩnh và đọc tên hiển thị ("Xin chào ...").
      */
+    suspend fun loginMember(email: String, password: String): LoginResult =
+        withContext(Dispatchers.IO) {
+            try {
+                val loginUrl = "https://member.bongdaplus.vn/Identity/Account/Login?returnUrl=%2F"
+                val form = try { Http.get(loginUrl) } catch (_: Exception) { null }
+                    ?: return@withContext LoginResult.NetworkError
+                if (!form.finalUrl.contains("Login", ignoreCase = true)) {
+                    // Đã login sẵn từ trước
+                    return@withContext LoginResult.Ok(fetchDisplayName(), checkSiteSession())
+                }
+                val doc = try { Jsoup.parse(form.html, loginUrl) } catch (_: Exception) { null }
+                    ?: return@withContext LoginResult.NetworkError
+                val token = doc.selectFirst("input[name=__RequestVerificationToken]")
+                    ?.attr("value").orEmpty()
+                if (token.isBlank()) return@withContext LoginResult.NetworkError
+                val res = Http.postForm(loginUrl, mapOf(
+                    "Input.Email" to email.trim(),
+                    "Input.Password" to password,
+                    "Input.RememberMe" to "true",
+                    "__RequestVerificationToken" to token,
+                ), loginUrl) ?: return@withContext LoginResult.NetworkError
+                if (res.finalUrl.contains("Login", ignoreCase = true)) {
+                    // Sai TK/MK hoặc lỗi validate: bóc chữ lỗi trong trang trả về
+                    val d2 = try { Jsoup.parse(res.body, loginUrl) } catch (_: Exception) { null }
+                    val err = d2?.select(".validation-summary-errors li, .text-danger li, span.text-danger")
+                        ?.map { it.text().trim() }?.filter { it.isNotBlank() && it.length > 1 }
+                        ?.distinct()?.joinToString("; ")?.take(200)
+                        ?.ifBlank { "Sai email hoặc mật khẩu." }
+                        ?: "Sai email hoặc mật khẩu."
+                    return@withContext LoginResult.Invalid(err)
+                }
+                // Đăng nhập member xong: handshake sang site rồi đọc tên
+                try { Http.get("https://member.bongdaplus.vn/Identity/Account/Login?ReturnUrl=%2FHome%2FLoginFromBongdaplus") } catch (_: Exception) { }
+                try { Http.get("$BASE/") } catch (_: Exception) { }
+                LoginResult.Ok(fetchDisplayName(), checkSiteSession())
+            } catch (_: Exception) { LoginResult.NetworkError }
+        }
+
+    /** Tên hiển thị từ trang Manage ("Xin chào <b>Tên</b>"). Trống nếu chưa login. */
+    suspend fun fetchDisplayName(): String = withContext(Dispatchers.IO) {
+        try {
+            val p = Http.get("https://member.bongdaplus.vn/Identity/Account/Manage")
+                ?: return@withContext ""
+            if (p.bouncedToLogin()) return@withContext ""
+            Regex("Xin chào\\s*<b>([^<]{1,40})</b>").find(p.html)?.groupValues?.get(1)?.trim()
+                ?: Regex("Xin chào\\s+([^\\n<]{1,40})").find(
+                    Jsoup.parse(p.html).body().text())?.groupValues?.get(1)?.trim().orEmpty()
+        } catch (_: Exception) { "" }
+    }
+
+    /** true khi trang site đã có phiên (input#txtUserid tĩnh có giá trị). */
+    suspend fun checkSiteSession(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val p = Http.get("$BASE/") ?: return@withContext false
+            Regex("id=\"txtUserid\" value=\"([^\"]+)\"").find(p.html)
+                ?.groupValues?.get(1)?.isNotBlank() == true
+        } catch (_: Exception) { false }
+    }
+
+    /** Server trả trang đăng nhập thay vì thực hiện hành động => coi như chưa login */
     private fun isLoginPage(body: String): Boolean {
         if (body.length < 5000) return false
         return body.contains("Input_Email") || body.contains("Account/Login") ||

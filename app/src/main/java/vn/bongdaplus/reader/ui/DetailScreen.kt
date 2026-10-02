@@ -1,11 +1,16 @@
 package vn.bongdaplus.reader.ui
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Intent
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -26,6 +31,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -334,6 +341,49 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun InAppVideoPlayer(embedUrl: String) {
+    val activity = LocalContext.current as? Activity
+    var loadError by remember(embedUrl) { mutableStateOf(false) }
+    var customView by remember(embedUrl) { mutableStateOf<View?>(null) }
+    var customCb by remember(embedUrl) {
+        mutableStateOf<WebChromeClient.CustomViewCallback?>(null)
+    }
+
+    fun exitFullscreen() {
+        try { customCb?.onCustomViewHidden() } catch (_: Exception) { }
+        // onHideCustomView dọn view + hiện system UI
+    }
+
+    BackHandler(enabled = customView != null) { exitFullscreen() }
+
+    if (loadError) {
+        // Rớt phát trong app: mở ngoài bằng trình duyệt/YouTube
+        val ctx = LocalContext.current
+        Card(
+            modifier = Modifier.fillMaxWidth().clickable {
+                try {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(embedUrl)))
+                } catch (_: Exception) { }
+            },
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        ) {
+            Text("⚠️ Không phát được trong app — bấm để mở ngoài",
+                modifier = Modifier.padding(14.dp))
+        }
+        return
+    }
+
+    val html = remember(embedUrl) {
+        val safe = embedUrl.replace("\"", "%22")
+        "<!DOCTYPE html><html><head>" +
+            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no\">" +
+            "<style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}" +
+            "iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style>" +
+            "</head><body>" +
+            "<iframe src=\"$safe\" allow=\"accelerometer; autoplay; clipboard-write; " +
+            "encrypted-media; gyroscope; picture-in-picture; fullscreen\" " +
+            "allowfullscreen referrerpolicy=\"no-referrer-when-downgrade\"></iframe>" +
+            "</body></html>"
+    }
     AndroidView(
         factory = { c ->
             WebView(c).apply {
@@ -344,13 +394,51 @@ private fun InAppVideoPlayer(embedUrl: String) {
                 settings.mediaPlaybackRequiresUserGesture = false
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
-                webViewClient = WebViewClient()
-                webChromeClient = WebChromeClient()
-                loadUrl(embedUrl)
+                webViewClient = object : WebViewClient() {
+                    override fun onReceivedError(
+                        view: WebView, request: WebResourceRequest, error: WebResourceError
+                    ) {
+                        if (request.isForMainFrame) loadError = true
+                    }
+                    @Suppress("DEPRECATION")
+                    override fun onReceivedError(
+                        view: WebView, errorCode: Int, description: String?, failingUrl: String?
+                    ) {
+                        loadError = true
+                    }
+                }
+                webChromeClient = object : WebChromeClient() {
+                    override fun onShowCustomView(
+                        view: View?, callback: CustomViewCallback?
+                    ) {
+                        if (customView != null) { callback?.onCustomViewHidden(); return }
+                        customView = view
+                        customCb = callback
+                        try {
+                            activity?.window?.let { w ->
+                                WindowCompat.getInsetsController(w, w.decorView)
+                                    .hide(WindowInsetsCompat.Type.systemBars())
+                            }
+                            view?.let { (activity?.window?.decorView as? ViewGroup)?.addView(it) }
+                        } catch (_: Exception) { }
+                    }
+                    override fun onHideCustomView() {
+                        try {
+                            (customView?.parent as? ViewGroup)?.removeView(customView)
+                            activity?.window?.let { w ->
+                                WindowCompat.getInsetsController(w, w.decorView)
+                                    .show(WindowInsetsCompat.Type.systemBars())
+                            }
+                        } catch (_: Exception) { }
+                        customView = null
+                        customCb = null
+                    }
+                }
+                loadDataWithBaseURL("https://bongdaplus.vn/", html, "text/html", "utf-8", null)
             }
         },
         modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)),
-        onRelease = { it.stopLoading(); it.destroy() }
+        onRelease = { try { it.stopLoading(); it.destroy() } catch (_: Exception) { } }
     )
 }
 

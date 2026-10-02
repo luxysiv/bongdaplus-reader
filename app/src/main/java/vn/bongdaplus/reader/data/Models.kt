@@ -77,6 +77,13 @@ data class MyCommented(
     val time: String,        // giờ mình đã bình luận
 )
 
+/** Kết quả đăng nhập member bằng OkHttp (form Email/Mật khẩu native) */
+sealed interface LoginResult {
+    data class Ok(val name: String, val siteSession: Boolean) : LoginResult
+    data class Invalid(val message: String) : LoginResult
+    data object NetworkError : LoginResult
+}
+
 /** Danh mục (slug lấy từ menu thật của bongdaplus.vn) */
 data class Category(val name: String, val slug: String)
 

@@ -123,6 +123,13 @@ class MainActivity : ComponentActivity() {
                                 onLogin = { nav.navigate("login") })
                         }
                         composable("login") {
+                            NativeLoginScreen(auth,
+                                onBack = { nav.popBackStack() },
+                                onDone = { nav.popBackStack() },
+                                onOAuth = { nav.navigate("login_web") },
+                                onRegister = { nav.navigate("register") })
+                        }
+                        composable("login_web") {
                             LoginScreen(auth,
                                 onBack = { nav.popBackStack() },
                                 onDone = { nav.popBackStack() })
