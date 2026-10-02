@@ -18,3 +18,6 @@ local.properties
 # Snapshot trang web (.mht) — nặng, chỉ dùng phân tích tạm, không commit
 *.mht
 *.mhtml
+
+# Tooling cục bộ
+.and-code/
