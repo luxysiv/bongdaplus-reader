@@ -20,8 +20,10 @@ jobs:
           java-version: 17
           cache: gradle
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub runner ubuntu đã cài sẵn Android SDK (platforms, build-tools),
+      # chỉ cần chấp nhận license rồi build.
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
 
       - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
