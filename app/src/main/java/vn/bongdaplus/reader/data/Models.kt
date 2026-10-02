@@ -63,6 +63,19 @@ data class MemberNotification(
     val time: String,      // "04 giờ trước"
 )
 
+/**
+ * 1 dòng trong board "Bài mới bình luận" ở Dashboard member
+ * (https://member.bongdaplus.vn/Identity/Account/Manage/DashBoard).
+ * VD: bài "Ronaldo..." + comment "Dỗi vương" (#2299071) lúc "06:58 ngày 01/10/2026".
+ */
+data class MyCommented(
+    val article: Article,
+    val commentId: String,   // "2299071" (neo #... trong link)
+    val commentUrl: String,  // link bài + #commentId
+    val myText: String,      // nội dung comment của mình
+    val time: String,        // giờ mình đã bình luận
+)
+
 /** Danh mục (slug lấy từ menu thật của bongdaplus.vn) */
 data class Category(val name: String, val slug: String)
 

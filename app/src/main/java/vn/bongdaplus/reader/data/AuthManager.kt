@@ -90,16 +90,26 @@ class AuthManager(private val ctx: Context) {
         ctx.appPrefs.edit { it[KEY_SEEN_NOTIFS] = keys.take(60).joinToString("|") }
     }
 
-    /** Cookie hiện tại để gắn vào Jsoup (đọc Premium) */
+    /**
+     * Cookie hiện tại để gắn vào Jsoup (đọc Premium + Dashboard member + div#lstnoti).
+     * Cookie login nằm ở domain member.bongdaplus.vn nên PHẢI gộp cả 2 domain,
+     * nếu không server trả trang chưa đăng nhập (lstnoti rỗng).
+     */
     fun currentCookies(): Map<String, String> {
         return try {
             val cm = CookieManager.getInstance()
-            val raw = cm.getCookie("https://bongdaplus.vn") ?: ""
-            // getCookie trả về "k=v; k2=v2"
-            raw.split(";").mapNotNull {
-                val kv = it.trim().split("=", limit = 2)
-                if (kv.size == 2 && kv[0].isNotBlank()) kv[0].trim() to kv[1].trim() else null
-            }.toMap()
+            val out = LinkedHashMap<String, String>()
+            for (host in listOf("https://bongdaplus.vn", "https://member.bongdaplus.vn")) {
+                try {
+                    val raw = cm.getCookie(host) ?: continue
+                    // getCookie trả về "k=v; k2=v2"
+                    raw.split(";").forEach {
+                        val kv = it.trim().split("=", limit = 2)
+                        if (kv.size == 2 && kv[0].isNotBlank()) out[kv[0].trim()] = kv[1].trim()
+                    }
+                } catch (_: Exception) { }
+            }
+            out
         } catch (_: Exception) { emptyMap() }
     }
 

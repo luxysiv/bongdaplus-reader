@@ -49,10 +49,16 @@ fun AccountScreen(
     val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
     var myArticles by remember { mutableStateOf<List<Article>>(emptyList()) }
     var myCount by remember { mutableStateOf(0) }
+    // Lịch sử thật từ Dashboard member (board "Bài mới bình luận")
+    var dashMine by remember { mutableStateOf<List<MyCommented>>(emptyList()) }
     LaunchedEffect(logged) {
         try {
             myArticles = trackStore.tracked().take(10)
             myCount = myArticles.sumOf { trackStore.myTexts(it.id).size }
+        } catch (_: Exception) { }
+        // Ưu tiên dữ liệu Dashboard thật khi đã login (cookie gộp cả member domain)
+        try {
+            if (logged) dashMine = BongDaPlusScraper.fetchMyCommented(auth.currentCookies()).take(5)
         } catch (_: Exception) { }
     }
 
@@ -123,14 +129,24 @@ fun AccountScreen(
                 )
                 HorizontalDivider()
             }
-            // Bình luận của tôi (member)
+            // Bình luận của tôi (dữ liệu thật từ Dashboard member, fallback local)
             item {
+                val dashN = dashMine.size
                 ListItem(
-                    headlineContent = { Text("Bình luận của tôi (${myArticles.size} bài${if (myCount > 0) ", $myCount lượt gửi" else ""})") },
-                    supportingContent = { Text(if (logged) "Bài bạn đã bình luận • bấm để mở • được duyệt/thích sẽ báo chi tiết" else "Đăng nhập rồi bình luận, bài sẽ tự hiện ở đây") },
+                    headlineContent = { Text(if (dashN > 0) "Bình luận của tôi ($dashN bài mới nhất)" else "Bình luận của tôi (${myArticles.size} bài${if (myCount > 0) ", $myCount lượt gửi" else ""})") },
+                    supportingContent = { Text(if (logged) "Theo Dashboard member • bấm để mở đúng comment" else "Đăng nhập rồi bình luận, bài sẽ tự hiện ở đây") },
                     leadingContent = { Icon(Icons.Default.ChatBubble, null) }
                 )
-                if (myArticles.isEmpty()) {
+                if (dashMine.isNotEmpty()) {
+                    dashMine.forEach { m ->
+                        ListItem(
+                            headlineContent = { Text(m.article.title, maxLines = 2, style = MaterialTheme.typography.bodyMedium) },
+                            supportingContent = { Text("“${m.myText.take(80)}”${if (m.time.isNotBlank()) " • ${m.time}" else ""}") },
+                            leadingContent = { Icon(Icons.Default.Comment, null) },
+                            modifier = Modifier.clickable { onOpenArticle(m.article) }
+                        )
+                    }
+                } else if (myArticles.isEmpty()) {
                     Text("Chưa có bài nào. Mở tin rồi gửi bình luận nhé.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline,
@@ -238,6 +254,7 @@ fun MemberNotifsScreen(
 ) {
     val vm: NotifViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val items by vm.items.collectAsState()
+    val mine by vm.mine.collectAsState()
     val loading by vm.loading.collectAsState()
     val logged by auth.loggedIn.collectAsState(initial = false)
     LaunchedEffect(logged) {
@@ -259,32 +276,61 @@ fun MemberNotifsScreen(
                     Button(onClick = onLogin) { Text("Đăng nhập") }
                 }
             }
-        } else if (loading && items.isEmpty()) {
+        } else if (loading && items.isEmpty() && mine.isEmpty()) {
             Box(Modifier.padding(pad)) { LoadingSkeleton(5) }
-        } else if (items.isEmpty()) {
+        } else if (items.isEmpty() && mine.isEmpty()) {
             Box(Modifier.padding(pad).fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Chưa có thông báo nào. Bình luận được thích sẽ hiện ở đây.")
             }
         } else {
             LazyColumn(Modifier.padding(pad).fillMaxSize()) {
-                items(items, key = { it.key }) { n ->
-                    ListItem(
-                        headlineContent = { Text(n.text, style = MaterialTheme.typography.bodyMedium) },
-                        supportingContent = { n.time.ifBlank { null }?.let { Text(it) } },
-                        leadingContent = {
-                            Box(modifier = Modifier.size(40.dp).clip(CircleShape)
-                                .background(if (n.action == "không thích") MaterialTheme.colorScheme.errorContainer
-                                else MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center) {
-                                Text(if (n.action == "không thích") "👎" else if (n.action == "trả lời") "↩️" else "👍")
+                // Board "Bài mới bình luận" từ Dashboard member: bài + comment của mình + giờ
+                if (mine.isNotEmpty()) {
+                    item {
+                        Text("💬 Bài mới bình luận",
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp))
+                    }
+                    items(mine, key = { it.commentUrl }) { m ->
+                        ListItem(
+                            headlineContent = { Text(m.article.title, style = MaterialTheme.typography.bodyMedium) },
+                            supportingContent = { Text("“${m.myText}”${if (m.time.isNotBlank()) " • ${m.time}" else ""}") },
+                            leadingContent = {
+                                Box(modifier = Modifier.size(40.dp).clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                                    contentAlignment = Alignment.Center) { Text("💬") }
+                            },
+                            modifier = Modifier.clickable { onOpen(m.article) }
+                        )
+                        HorizontalDivider()
+                    }
+                }
+                // Lịch sử div#lstnoti: ai thích / không thích bình luận của bạn
+                if (items.isNotEmpty()) {
+                    item {
+                        Text("🔔 Ai đã thích bình luận của bạn",
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp))
+                    }
+                    items(items, key = { it.key }) { n ->
+                        ListItem(
+                            headlineContent = { Text(n.text, style = MaterialTheme.typography.bodyMedium) },
+                            supportingContent = { n.time.ifBlank { null }?.let { Text(it) } },
+                            leadingContent = {
+                                Box(modifier = Modifier.size(40.dp).clip(CircleShape)
+                                    .background(if (n.action == "không thích") MaterialTheme.colorScheme.errorContainer
+                                    else MaterialTheme.colorScheme.primaryContainer),
+                                    contentAlignment = Alignment.Center) {
+                                    Text(if (n.action == "không thích") "👎" else if (n.action == "trả lời") "↩️" else "👍")
+                                }
+                            },
+                            modifier = Modifier.clickable {
+                                val a = Article(BongDaPlusScraper.idFromUrl(n.url), n.text.take(80), n.url)
+                                onOpen(a)
                             }
-                        },
-                        modifier = Modifier.clickable {
-                            val a = Article(BongDaPlusScraper.idFromUrl(n.url), n.text.take(80), n.url)
-                            onOpen(a)
-                        }
-                    )
-                    HorizontalDivider()
+                        )
+                        HorizontalDivider()
+                    }
                 }
             }
         }

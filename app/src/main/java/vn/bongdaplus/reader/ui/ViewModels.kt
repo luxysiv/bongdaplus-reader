@@ -232,14 +232,19 @@ class NotifViewModel : ViewModel() {
     var cookieProvider: () -> Map<String, String> = { emptyMap() }
     private val _items = MutableStateFlow<List<MemberNotification>>(emptyList())
     val items: StateFlow<List<MemberNotification>> = _items
+    private val _mine = MutableStateFlow<List<MyCommented>>(emptyList())
+    val mine: StateFlow<List<MyCommented>> = _mine
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
 
     fun load() {
         viewModelScope.launch {
             _loading.value = true
-            try { _items.value = BongDaPlusScraper.fetchMemberNotifications(cookiesOf(cookieProvider)) }
-            catch (_: Exception) { }
+            try {
+                val ck = cookiesOf(cookieProvider)
+                _items.value = BongDaPlusScraper.fetchMemberNotifications(ck)
+                _mine.value = BongDaPlusScraper.fetchMyCommented(ck)
+            } catch (_: Exception) { }
             _loading.value = false
         }
     }

@@ -306,10 +306,45 @@ object BongDaPlusScraper {
         }
 
     /**
-     * Lịch sử thông báo member THẬT (xác thực từ file .mht của user):
-     * div#lstnoti > ul.lst > li.news > a[href*=txtcomment_] + span.info (thời gian).
-     * Mỗi item: "X đã thích / không thích bình luận của bạn ở bài viết: Y".
-     * Cần cookies đăng nhập, GET trang chủ là đủ vì khung notifier có ở mọi trang.
+     * Lịch sử "Bài mới bình luận" THẬT từ Dashboard member
+     * (xác thực từ file "Tổng quan - Member.mht" của user):
+     * board "Bài mới bình luận" > ul.news-lst > li.news gồm
+     * a.title (bài) + span.info > a[href=#commentId] (comment của mình) + span.info (giờ).
+     * Cần cookies login (gộp cả member.bongdaplus.vn).
+     */
+    suspend fun fetchMyCommented(cookies: Map<String, String> = emptyMap()): List<MyCommented> =
+        withContext(Dispatchers.IO) {
+            if (cookies.isEmpty()) return@withContext emptyList()
+            try {
+                val doc = Jsoup.connect("https://member.bongdaplus.vn/Identity/Account/Manage/DashBoard")
+                    .userAgent(UA).timeout(20000).cookies(cookies).get()
+                // nếu bị đá về trang login thì không có board
+                if (doc.selectFirst("input#Input_Email, form#account") != null) return@withContext emptyList()
+                val board = doc.select("div.board").firstOrNull {
+                    it.selectFirst("div.brd-cap")?.text()?.contains("Bài mới bình luận") == true
+                } ?: return@withContext emptyList()
+                board.select("ul.news-lst li.news").mapNotNull { li ->
+                    val aTitle = li.selectFirst("a.title") ?: return@mapNotNull null
+                    val articleUrl = absUrl(aTitle.attr("href").trim())
+                    if (articleUrl.isBlank()) return@mapNotNull null
+                    val cmtA = li.select("span.info a[href]").firstOrNull { it.attr("href").contains("#") }
+                        ?: return@mapNotNull null
+                    val commentUrl = absUrl(cmtA.attr("href").trim())
+                    val commentId = commentUrl.substringAfter("#", "").trim()
+                    val myText = cmtA.text().trim().replace(Regex("\\s+"), " ")
+                    if (myText.isBlank()) return@mapNotNull null
+                    val time = li.select("span.info").map { it.text().trim() }
+                        .firstOrNull { it.isNotBlank() && !it.contains(myText.take(20)) } ?: ""
+                    val aid = idFromUrl(articleUrl)
+                    MyCommented(Article(aid, aTitle.text().trim(), articleUrl), commentId, commentUrl, myText, time)
+                }.take(20)
+            } catch (_: Exception) { emptyList() }
+        }
+
+    /**
+     * Lịch sử thông báo member (div#lstnoti): mỗi item
+     * "X đã thích / không thích bình luận của bạn ở bài viết: Y" + link #txtcomment_ + giờ.
+     * Cần cookies đăng nhập (gộp cả member.bongdaplus.vn).
      */
     suspend fun fetchMemberNotifications(cookies: Map<String, String> = emptyMap()): List<MemberNotification> =
         withContext(Dispatchers.IO) {
