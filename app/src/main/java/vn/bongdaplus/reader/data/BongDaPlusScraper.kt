@@ -462,7 +462,7 @@ object BongDaPlusScraper {
             val bodies = listOf(
                 Http.get("$BASE/GetNotificationGeneralInitiator?t=$bust", "$BASE/", xhr = true)?.html,
                 Http.get("$BASE/GetNotification?t=$bust", "$BASE/", xhr = true)?.html
-            ).filter { !it.isNullOrBlank() }
+            ).mapNotNull { it }.filter { it.isNotBlank() }
             if (bodies.isEmpty()) return@withContext emptyList()
             val out = mutableListOf<MemberNotification>()
             for (body in bodies) {
@@ -487,16 +487,17 @@ object BongDaPlusScraper {
                     val a = frag.selectFirst("a[href]")
                     val full = (a?.text() ?: frag.text()).trim().replace(Regex("\\s+"), " ")
                     if (full.isBlank()) continue
-                    var actor = a?.selectFirst("b")?.text()?.trim()
-                        .ifNullOrBlank { o.optString("fullNameFrom").trim().ifBlank { "Ai đó" } }
+                    var actor = (a?.selectFirst("b")?.text()?.trim().orEmpty())
+                        .ifBlank { (o.optString("fullNameFrom") ?: "").trim().ifBlank { "Ai đó" } }
                     actor = actor.replace(Regex("\\s+"), " ")
                     // urlPath sạch (neo #txtcomment_ đúng); contents href đôi khi dính id lặp
-                    var href = o.optString("urlPath").trim().ifBlank { a?.attr("href")?.trim().orEmpty() }
+                    var href = (o.optString("urlPath") ?: "").trim()
+                        .ifBlank { a?.attr("href")?.trim().orEmpty() }
                     if (href.isBlank()) continue
                     if (href.startsWith("/")) href = href.substring(1)
                     val url = absUrl(href)
-                    val time = (frag.selectFirst("span.info")?.text()?.trim()
-                        .ifBlank { (o.optString("postedDate") ?: "").trim() }).orEmpty()
+                    val infoTime = frag.selectFirst("span.info")?.text()?.trim().orEmpty()
+                    val time = infoTime.ifBlank { (o.optString("postedDate") ?: "").trim() }
                     val action = when {
                         full.contains("không thích", true) -> "không thích"
                         full.contains("thích", true) -> "thích"
