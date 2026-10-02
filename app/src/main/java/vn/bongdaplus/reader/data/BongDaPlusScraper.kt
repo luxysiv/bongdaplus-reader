@@ -100,17 +100,33 @@ object BongDaPlusScraper {
         return out.values.toList()
     }
 
+    /**
+     * Tải Document: ưu tiên core WebView (phiên thật + JS render xong),
+     * lỗi/timeout thì rớt về Jsoup thuần như cũ.
+     */
+    private suspend fun loadDoc(
+        url: String, cookies: Map<String, String>, settleMs: Long = 1200
+    ): org.jsoup.nodes.Document {
+        if (WebFetcher.available()) {
+            try {
+                val html = WebFetcher.getHtml(url, settleMs)
+                if (!html.isNullOrBlank() && html.contains("<html", true)) {
+                    return org.jsoup.Jsoup.parse(html, url)
+                }
+            } catch (_: Exception) { }
+        }
+        return Jsoup.connect(url).userAgent(UA).timeout(20000).cookies(cookies).get()
+    }
+
     suspend fun fetchHome(cookies: Map<String, String> = emptyMap()): List<Article> =
         withContext(Dispatchers.IO) {
-            val doc = Jsoup.connect("$BASE/")
-                .userAgent(UA).timeout(20000).cookies(cookies).get()
+            val doc = loadDoc("$BASE/", cookies, settleMs = 400)
             parseCardList(doc, null)
         }
 
     suspend fun fetchCategory(slug: String, cookies: Map<String, String> = emptyMap()): List<Article> =
         withContext(Dispatchers.IO) {
-            val doc = Jsoup.connect("$BASE/$slug")
-                .userAgent(UA).timeout(20000).cookies(cookies).get()
+            val doc = loadDoc("$BASE/$slug", cookies, settleMs = 400)
             parseCardList(doc, slug)
         }
 
@@ -171,7 +187,7 @@ object BongDaPlusScraper {
 
     suspend fun fetchDetail(url: String, cookies: Map<String, String> = emptyMap()): ArticleDetail =
         withContext(Dispatchers.IO) {
-            val doc = Jsoup.connect(url).userAgent(UA).timeout(20000).cookies(cookies).get()
+            val doc = loadDoc(url, cookies)
             val title = doc.selectFirst("h1")?.text()?.trim()
                 ?: doc.selectFirst("meta[property=og:title]")?.attr("content") ?: "Bài viết"
             var ogImg = doc.selectFirst("meta[property=og:image]")?.attr("content")
@@ -271,7 +287,7 @@ object BongDaPlusScraper {
     suspend fun fetchObjectRef(url: String, cookies: Map<String, String> = emptyMap()): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             try {
-                val doc = Jsoup.connect(url).userAgent(UA).timeout(20000).cookies(cookies).get()
+                val doc = loadDoc(url, cookies)
                 val oid = doc.selectFirst("#objectid")?.attr("value")?.trim()
                     ?.ifBlank { null } ?: idFromUrl(url).filter { it.isDigit() }
                 if (oid.isBlank()) return@withContext null
@@ -336,12 +352,29 @@ object BongDaPlusScraper {
             emptyList()
         }
 
-    /** Gửi bình luận thật (cần cookie login). True = server đã nhận (chờ duyệt). */
+    /**
+     * Gửi bình luận thật. Ưu tiên POST bằng core WebView (phiên thật),
+     * rớt về Jsoup khi WebView chưa sẵn. True = server đã nhận (chờ duyệt).
+     */
     suspend fun postComment(objectId: String, objectType: String, text: String,
                             cookies: Map<String, String>,
                             parentId: String = "0", replyId: String = "0",
-                            replyName: String = ""): Boolean =
+                            replyName: String = "", pageUrl: String = "$BASE/"): Boolean =
         withContext(Dispatchers.IO) {
+            val params = mapOf("objectid" to objectId, "objecttype" to objectType,
+                "parentid" to parentId, "replyid" to replyId,
+                "replyname" to replyName, "comment" to text)
+            // 1) WebView core
+            if (WebFetcher.available()) {
+                try {
+                    val b = WebFetcher.postForm("$BASE/postcomment/", pageUrl, params).orEmpty()
+                    if (b.isNotBlank()) {
+                        // Server nhận (kể cả chỉ báo đã gửi): true, trừ khi bị đá về login
+                        return@withContext !isLoginPage(b)
+                    }
+                } catch (_: Exception) { }
+            }
+            // 2) Jsoup fallback
             try {
                 val res = Jsoup.connect("$BASE/postcomment/")
                     .userAgent(UA).timeout(15000).cookies(cookies)
@@ -369,8 +402,7 @@ object BongDaPlusScraper {
         withContext(Dispatchers.IO) {
             if (cookies.isEmpty()) return@withContext emptyList()
             try {
-                val doc = Jsoup.connect("https://member.bongdaplus.vn/Identity/Account/Manage/DashBoard")
-                    .userAgent(UA).timeout(20000).cookies(cookies).get()
+                val doc = loadDoc("https://member.bongdaplus.vn/Identity/Account/Manage/DashBoard", cookies)
                 // nếu bị đá về trang login thì không có board
                 if (doc.selectFirst("input#Input_Email, form#account") != null) return@withContext emptyList()
                 val board = doc.select("div.board").firstOrNull {
@@ -403,7 +435,7 @@ object BongDaPlusScraper {
         withContext(Dispatchers.IO) {
             if (cookies.isEmpty()) return@withContext emptyList()
             try {
-                val doc = Jsoup.connect("$BASE/").userAgent(UA).timeout(20000).cookies(cookies).get()
+                val doc = loadDoc("$BASE/", cookies)
                 doc.select("div#lstnoti li.news").mapNotNull { li ->
                     val a = li.selectFirst("a[href]") ?: return@mapNotNull null
                     val href = a.attr("href").trim()
@@ -431,11 +463,22 @@ object BongDaPlusScraper {
      * POST /setCommentEmotion/{objectId}/{commentId}/1 (thích) hoặc /7 (không thích).
      */
     suspend fun setCommentEmotion(objectId: String, commentId: String, like: Boolean,
-                                  cookies: Map<String, String>): Boolean =
+                                  cookies: Map<String, String>,
+                                  pageUrl: String = "$BASE/"): Boolean =
         withContext(Dispatchers.IO) {
+            val type = if (like) "1" else "7"
+            // 1) WebView core: endpoint trả rỗng khi thành công.
+            // postForm trả null = lỗi mạng/timeout -> rớt xuống Jsoup.
+            if (WebFetcher.available()) {
+                try {
+                    val b = WebFetcher.postForm("$BASE/setCommentEmotion/$objectId/$commentId/$type",
+                        pageUrl, emptyMap())
+                    if (b != null) return@withContext !isLoginPage(b)
+                } catch (_: Exception) { }
+            }
+            // 2) Jsoup fallback
             if (cookies.isEmpty()) return@withContext false
             try {
-                val type = if (like) "1" else "7"
                 val res = Jsoup.connect("$BASE/setCommentEmotion/$objectId/$commentId/$type")
                     .userAgent(UA).timeout(15000).cookies(cookies)
                     .header("X-Requested-With", "XMLHttpRequest")
@@ -450,8 +493,18 @@ object BongDaPlusScraper {
      * POST /setNewsEmotion/{objectId}/{objectType}/{emotionType}
      */
     suspend fun setNewsEmotion(objectId: String, objectType: String, emotionType: Int,
-                                cookies: Map<String, String>): Boolean =
+                                cookies: Map<String, String>,
+                                pageUrl: String = "$BASE/"): Boolean =
         withContext(Dispatchers.IO) {
+            // 1) WebView core
+            if (WebFetcher.available()) {
+                try {
+                    val b = WebFetcher.postForm("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType",
+                        pageUrl, emptyMap())
+                    if (b != null) return@withContext !isLoginPage(b)
+                } catch (_: Exception) { }
+            }
+            // 2) Jsoup fallback
             if (cookies.isEmpty()) return@withContext false
             try {
                 val res = Jsoup.connect("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType")

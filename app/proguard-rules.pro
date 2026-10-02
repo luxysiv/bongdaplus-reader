@@ -6,3 +6,7 @@
 -keep class androidx.work.** { *; }
 -dontwarn androidx.work.**
 -dontwarn kotlinx.coroutines.**
+# WebFetcher dùng addJavascriptInterface (bridge @JavascriptInterface)
+-keepclassmembers class vn.bongdaplus.reader.data.WebFetcher* {
+    @android.webkit.JavascriptInterface <methods>;
+}

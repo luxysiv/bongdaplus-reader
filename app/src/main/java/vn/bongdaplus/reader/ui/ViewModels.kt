@@ -169,7 +169,7 @@ class DetailViewModel : ViewModel() {
         val d = _detail.value ?: return
         viewModelScope.launch {
             val ok = try {
-                BongDaPlusScraper.setCommentEmotion(d.objectId, commentId, like, cookiesOf(cookieProvider))
+                BongDaPlusScraper.setCommentEmotion(d.objectId, commentId, like, cookiesOf(cookieProvider), d.article.url)
             } catch (_: Exception) { false }
             if (ok) {
                 _comments.value = _comments.value.map {
@@ -188,7 +188,7 @@ class DetailViewModel : ViewModel() {
         val d = _detail.value ?: return
         viewModelScope.launch {
             try {
-                if (BongDaPlusScraper.setNewsEmotion(d.objectId, d.objectType, emotionType, cookiesOf(cookieProvider))) {
+                if (BongDaPlusScraper.setNewsEmotion(d.objectId, d.objectType, emotionType, cookiesOf(cookieProvider), d.article.url)) {
                     val e = d.emotion
                     val bumped = when (emotionType) {
                         1 -> e.copy(liked = e.liked + 1)
@@ -217,7 +217,7 @@ class DetailViewModel : ViewModel() {
             val ok = try {
                 BongDaPlusScraper.postComment(
                     d.objectId, d.objectType, clean, ck,
-                    parentId, replyId, replyName)
+                    parentId, replyId, replyName, (article ?: d.article).url)
             } catch (_: Exception) { false }
             _sendMsg.value = if (ok) "Đã gửi! Bình luận chờ duyệt rồi sẽ hiện. Đã bật theo dõi — có bình luận mới sẽ báo chi tiết."
             else "Gửi thất bại — bạn cần đăng nhập tài khoản BongdaPlus."
