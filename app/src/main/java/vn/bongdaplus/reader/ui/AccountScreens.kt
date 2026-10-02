@@ -370,14 +370,11 @@ private fun AuthWebViewScreen(
     var status by remember(url) { mutableStateOf("Đang mở $title BongdaPlus…") }
     // CookieManager là singleton dùng chung toàn app (mọi màn hình/WebView/Jsoup
     // đều đọc cùng 1 kho), nhưng phiên member và phiên site là 2 domain khác nhau.
-    // Trang chủ nhúng 2 iframe handshake:
-    //   Login?ReturnUrl=/Home/LoginFromBongdaplus (+ CommentLoginFromBongdaplus).
-    // Không tin cookie mù mờ nữa: đọc thẳng id user trong DOM (input#txtUserid,
-    // form Logout, chữ "Xin chào ...") rồi mới coi là đã đăng nhập.
-    // Trình tự đồng bộ: trang member -> mở URL Login-from top-level (server tự
-    // đẩy token về bongdaplus.vn) -> mở trang chủ (iframe handshake) + chờ lại.
-    var ssoStep by remember(url) { mutableStateOf(0) }
-    var recheckDone by remember(url) { mutableStateOf(false) }
+    // Trang chủ nhúng 2 iframe handshake LoginFromBongdaplus: sau khi login member,
+    // mở trang chủ MỘT lần rồi kiên nhẫn poll (không load lại làm đứt chuỗi).
+    // Nhận diện bằng DOM: input#txtUserid, form Logout, "Xin chào".
+    var homeLoaded by remember(url) { mutableStateOf(false) }
+    var pollCount by remember(url) { mutableStateOf(0) }
     var finished by remember(url) { mutableStateOf(false) }
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
 
@@ -387,26 +384,6 @@ private fun AuthWebViewScreen(
         status = "✅ Thành công" +
             (if (name.isNotBlank()) " ($name)" else "") + "! Đang lưu…"
         scope.launch { auth.markLoggedIn(name); onDone() }
-    }
-
-    fun syncSite(view: WebView, name: String) {
-        // Tải top-level URL handshake: member server thấy đã login sẽ tự
-        // chuyển về bongdaplus.vn kèm token, khỏi phụ thuộc third-party cookie.
-        when (ssoStep) {
-            0 -> {
-                ssoStep = 1
-                status = "Đã đăng nhập" +
-                    (if (name.isNotBlank()) " ($name)" else "") +
-                    ", đang đồng bộ sang BongdaPlus (1/2)…"
-                view.loadUrl(AuthManager.SSO_LOGIN_URL)
-            }
-            1 -> {
-                ssoStep = 2
-                status = "Đang đồng bộ sang BongdaPlus (2/2)…"
-                view.loadUrl(AuthManager.HOME)
-            }
-            else -> finishSuccess(name) // đã thử hết, giữ login member
-        }
     }
 
     fun probeLogin(view: WebView, pageUrl: String) {
@@ -436,16 +413,26 @@ private fun AuthWebViewScreen(
             val isMemberPage = pageUrl.contains("member.bongdaplus.vn")
             // Phiên site (uid trên trang bongdaplus.vn / cookie site) mới gửi bình luận được.
             val siteOk = !isMemberPage && (uid.isNotBlank() || hasLogout || auth.hasSiteCookie())
+            // Hiện trạng phiên để user báo lỗi chính xác: member? site?
+            val sessInfo = "[member:${if (auth.hasMemberCookie()) "có" else "không"}" +
+                " site:${if (auth.hasSiteCookie()) "có" else "không"}]"
             when {
                 siteOk -> finishSuccess(nameGuess)
-                (domLogged || cookieLogged) && isMemberPage -> syncSite(view, nameGuess)
+                (domLogged || cookieLogged) && isMemberPage && !homeLoaded -> {
+                    homeLoaded = true
+                    pollCount = 0
+                    status = "Đã đăng nhập" +
+                        (if (nameGuess.isNotBlank()) " ($nameGuess)" else "") +
+                        " $sessInfo, đang đồng bộ sang BongdaPlus…"
+                    view.loadUrl(AuthManager.HOME)
+                }
                 domLogged || cookieLogged -> {
-                    // Trang site nhưng chưa thấy phiên site: cho iframe handshake
-                    // thêm thời gian rồi kiểm tra lại 1 lần trước khi chốt.
-                    if (!recheckDone) {
-                        recheckDone = true
-                        status = "Đang đồng bộ phiên, chờ chút…"
-                        view.postDelayed({ if (!finished) probeLogin(view, pageUrl) }, 3000)
+                    // Đang ở trang site: cho iframe handshake thời gian (poll tối đa 5 lần),
+                    // tuyệt đối không load lại làm đứt chuỗi.
+                    if (pollCount < 5) {
+                        pollCount++
+                        status = "Đang đồng bộ phiên $sessInfo ($pollCount/5)…"
+                        view.postDelayed({ if (!finished) probeLogin(view, pageUrl) }, 2000)
                     } else finishSuccess(nameGuess)
                 }
                 else -> status = "Nhập Email + Mật khẩu (hoặc Google/Apple) để tiếp tục…"
