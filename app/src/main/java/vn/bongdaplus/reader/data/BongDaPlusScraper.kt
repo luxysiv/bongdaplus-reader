@@ -353,18 +353,74 @@ object BongDaPlusScraper {
         }
 
     /**
-     * Gửi bình luận thật. Ưu tiên POST bằng core WebView (phiên thật),
-     * rớt về Jsoup khi WebView chưa sẵn. True = server đã nhận (chờ duyệt).
+     * Gửi bình luận bằng NÚT THẬT của web (btnComment_click) trong core WebView:
+     * đúng phiên, đúng header, đúng cookie — không phụ thuộc client ngoài nữa.
+     * True = server đã nhận (chờ duyệt). Null = không thực thi được (rớt fallback).
+     */
+    suspend fun postCommentViaSite(
+        pageUrl: String, text: String,
+        parentId: String = "0", replyId: String = "0", replyName: String = "",
+    ): Boolean? = withContext(Dispatchers.IO) {
+        if (!WebFetcher.available()) return@withContext null
+        try {
+            val qText = JSONObject.quote(text)
+            val qPid = JSONObject.quote(parentId)
+            val qRid = JSONObject.quote(replyId)
+            val action = if (parentId == "0" && replyId == "0") {
+                "(function(){window.__cmt='NOBOX';" +
+                    "try{var t=document.getElementById('txtcomment_0');" +
+                    "if(!t)return window.__cmt;t.value=$qText;" +
+                    "btnComment_click(0,0);window.__cmt='SENT';}catch(e){}" +
+                    "return window.__cmt;})()"
+            } else {
+                "(function(){window.__cmt='NOBOX';" +
+                    "try{showreplybox($qPid,$qRid);" +
+                    "var t=document.getElementById('txtcomment_'+$qRid);" +
+                    "if(!t)t=document.getElementById('txtcomment_'+$qPid);" +
+                    "if(!t)return window.__cmt;t.value=$qText;" +
+                    "btnComment_click($qPid,$qRid);window.__cmt='SENT';}catch(e){}" +
+                    "return window.__cmt;})()"
+            }
+            val read = "(function(){var t='';try{t=Array.prototype.map.call(" +
+                "document.querySelectorAll('#postComment .cmterr')," +
+                "function(e){return e.innerText||'';}).join(' | ').trim();}catch(e){}" +
+                "var pop=document.getElementById('commentloginview');" +
+                "var pv=(pop&&!pop.classList.contains('hide'))?'LOGINPOP':'';" +
+                "return (window.__cmt||'?')+'~~~'+t+(t&&pv?' | ':'')+pv;})()"
+            val raw = WebFetcher.loadClickRead(pageUrl, action, read,
+                settleMs = 1500, waitAfterMs = 4000) ?: return@withContext null
+            val marker = raw.substringBefore("~~~")
+            if (marker != "SENT") return@withContext null // form/nút web không có -> rớt fallback
+            val kicked = raw.substringAfter("~~~")
+            val low = kicked.lowercase()
+            // Server nhận: "đã được gửi tới bộ phận duyệt" / có chữ "duyệt"
+            if (low.contains("duyệt")) return@withContext true
+            // Server từ chối vì chưa login: popup login hiện hoặc báo đăng nhập
+            if (low.contains("đăng nhập") || low.contains("loginpop")) return@withContext false
+            // Có chữ mà không rõ nghĩa (vd lỗi khác) -> coi như thất bại nhưng đã thực thi
+            if (kicked.isNotBlank()) return@withContext false
+            // Trống: server chưa trả lời kịp / JS lỗi -> không kết luận, rớt fallback
+            null
+        } catch (_: Exception) { null }
+    }
+
+    /**
+     * Gửi bình luận thật. Ưu tiên NÚT THẬT của web, rớt về Jsoup khi không thực thi được.
+     * True = server đã nhận (chờ duyệt).
      */
     suspend fun postComment(objectId: String, objectType: String, text: String,
                             cookies: Map<String, String>,
                             parentId: String = "0", replyId: String = "0",
                             replyName: String = "", pageUrl: String = "$BASE/"): Boolean =
         withContext(Dispatchers.IO) {
+            // 1) Nút thật của web trong core WebView
+            try {
+                postCommentViaSite(pageUrl, text, parentId, replyId, replyName)?.let { return@withContext it }
+            } catch (_: Exception) { }
+            // 2) POST fetch trong WebView
             val params = mapOf("objectid" to objectId, "objecttype" to objectType,
                 "parentid" to parentId, "replyid" to replyId,
                 "replyname" to replyName, "comment" to text)
-            // 1) WebView core
             if (WebFetcher.available()) {
                 try {
                     val b = WebFetcher.postForm("$BASE/postcomment/", pageUrl, params).orEmpty()
@@ -374,7 +430,7 @@ object BongDaPlusScraper {
                     }
                 } catch (_: Exception) { }
             }
-            // 2) Jsoup fallback
+            // 3) Jsoup fallback
             try {
                 val res = Jsoup.connect("$BASE/postcomment/")
                     .userAgent(UA).timeout(15000).cookies(cookies)
@@ -459,15 +515,63 @@ object BongDaPlusScraper {
         }
 
     /**
-     * Thích / Không thích 1 bình luận (API thật từ bongdaplus.js).
-     * POST /setCommentEmotion/{objectId}/{commentId}/1 (thích) hoặc /7 (không thích).
+     * Thích/Không thích bằng NÚT THẬT của web trong core WebView.
+     * True = nút tồn tại và đã bấm (web tự POST + cập nhật số). Null = không thực thi được.
+     */
+    suspend fun voteCommentViaSite(pageUrl: String, commentId: String, like: Boolean): Boolean? =
+        withContext(Dispatchers.IO) {
+            if (!WebFetcher.available()) return@withContext null
+            try {
+                val qId = JSONObject.quote(commentId)
+                val fn = if (like) "btnComEmo_clickthumup" else "btnComEmo_clickthumdw"
+                val action = "(function(){window.__v='NOBOX';try{" +
+                    "var b=document.getElementById('btnlikecmt_'+$qId);" +
+                    "if(!b)return window.__v;$fn($qId);window.__v='SENT';}catch(e){}" +
+                    "return window.__v;})()"
+                val read = "(function(){var a=document.getElementById('thumup_'+$qId);" +
+                    "var b=document.getElementById('thumdw_'+$qId);" +
+                    "var has=!!document.getElementById('btnlikecmt_'+$qId);" +
+                    "return (window.__v||'?')+'~~~'+(has?'1':'0')+'~~~'+(a?a.innerText:'?')+'|'+(b?b.innerText:'?');})()"
+                val raw = WebFetcher.loadClickRead(pageUrl, action, read,
+                    settleMs = 1200, waitAfterMs = 1500) ?: return@withContext null
+                if (!raw.startsWith("SENT~~~1")) return@withContext null
+                true
+            } catch (_: Exception) { null }
+        }
+
+    /**
+     * Cảm xúc bài viết bằng NÚT THẬT của web (btnNewsEmotion_click).
+     * True = đã bấm. Null = không thực thi được.
+     */
+    suspend fun emotionArticleViaSite(pageUrl: String, emotionType: Int): Boolean? =
+        withContext(Dispatchers.IO) {
+            if (!WebFetcher.available()) return@withContext null
+            try {
+                val action = "(function(){window.__e='NOBOX';try{" +
+                    "if(typeof btnNewsEmotion_click!=='function')return window.__e;" +
+                    "btnNewsEmotion_click($emotionType);window.__e='SENT';}catch(e){}" +
+                    "return window.__e;})()"
+                val read = "(function(){return (window.__e||'?')+'~~~'+'1';})()"
+                val raw = WebFetcher.loadClickRead(pageUrl, action, read,
+                    settleMs = 1200, waitAfterMs = 1200) ?: return@withContext null
+                if (!raw.startsWith("SENT")) return@withContext null
+                true
+            } catch (_: Exception) { null }
+        }
+    /**
+     * Thích / Không thích 1 bình luận. Ưu tiên NÚT THẬT của web,
+     * rồi POST fetch, rồi Jsoup.
      */
     suspend fun setCommentEmotion(objectId: String, commentId: String, like: Boolean,
                                   cookies: Map<String, String>,
                                   pageUrl: String = "$BASE/"): Boolean =
         withContext(Dispatchers.IO) {
             val type = if (like) "1" else "7"
-            // 1) WebView core: endpoint trả rỗng khi thành công.
+            // 1) Nút thật của web trong core WebView
+            try {
+                voteCommentViaSite(pageUrl, commentId, like)?.let { return@withContext it }
+            } catch (_: Exception) { }
+            // 2) POST fetch trong WebView: endpoint trả rỗng khi thành công.
             // postForm trả null = lỗi mạng/timeout -> rớt xuống Jsoup.
             if (WebFetcher.available()) {
                 try {
@@ -492,11 +596,19 @@ object BongDaPlusScraper {
      * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow (theo loadNewsEmotion trong bongdaplus.js).
      * POST /setNewsEmotion/{objectId}/{objectType}/{emotionType}
      */
+    /**
+     * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow. Ưu tiên NÚT THẬT của web,
+     * rồi POST fetch, rồi Jsoup.
+     */
     suspend fun setNewsEmotion(objectId: String, objectType: String, emotionType: Int,
                                 cookies: Map<String, String>,
                                 pageUrl: String = "$BASE/"): Boolean =
         withContext(Dispatchers.IO) {
-            // 1) WebView core
+            // 1) Nút thật của web trong core WebView
+            try {
+                emotionArticleViaSite(pageUrl, emotionType)?.let { return@withContext it }
+            } catch (_: Exception) { }
+            // 2) POST fetch trong WebView
             if (WebFetcher.available()) {
                 try {
                     val b = WebFetcher.postForm("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType",

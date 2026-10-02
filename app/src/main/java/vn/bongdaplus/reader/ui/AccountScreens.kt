@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -19,11 +21,52 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
 import vn.bongdaplus.reader.data.*
+
+// ---------- Chẩn đoán phiên đăng nhập (không lộ giá trị cookie) ----------
+
+private suspend fun runSessionDiag(cookieNames: List<String>): String {
+    val sb = StringBuilder()
+    try {
+        sb.appendLine("Cookie trong máy (${cookieNames.size}): " +
+            (cookieNames.sorted().take(25).joinToString(", ").ifBlank { "(trống)" }))
+        sb.appendLine("WebView fetch: " + (if (WebFetcher.available()) "sẵn sàng" else "KHÔNG sẵn sàng"))
+        val homeProbe = WebFetcher.loadAndEval("https://bongdaplus.vn/",
+            "(function(){var u=document.getElementById('txtUserid');u=u&&u.value||'';" +
+                "var lo=!!document.querySelector('form[action*=\"Logout\"],a[href*=\"Logout\"]');" +
+                "var n=document.querySelectorAll('div#lstnoti li.news').length;" +
+                "var c=document.querySelectorAll('div.news').length;" +
+                "return u+'|||'+(lo?'1':'0')+'|||'+n+'|||'+c;})()", 2000)
+        if (homeProbe == null) sb.appendLine("Trang chủ site: KHÔNG tải được")
+        else {
+            val p = homeProbe.split("|||")
+            sb.appendLine("Trang chủ site: userid=" + p.getOrNull(0).orEmpty().ifBlank { "(trống)" } +
+                ", logout=" + p.getOrNull(1) + ", lstnoti=" + p.getOrNull(2) + ", tin=" + p.getOrNull(3))
+        }
+        val dashProbe = WebFetcher.loadAndEval(
+            "https://member.bongdaplus.vn/Identity/Account/Manage/DashBoard",
+            "(function(){var caps=[];try{document.querySelectorAll('div.brd-cap').forEach(" +
+                "function(e){caps.push(e.innerText.trim().replace(/\\s+/g,' ').slice(0,40));});}catch(x){}" +
+                "var c=document.querySelectorAll('ul.news-lst li.news').length;" +
+                "var login=!!document.querySelector('form#account');" +
+                "return caps.join(' ## ')+'|||'+c+'|||'+(login?'LOGINPAGE':'OK');})()", 2000)
+        if (dashProbe == null) sb.appendLine("Dashboard member: KHÔNG tải được")
+        else {
+            val p = dashProbe.split("|||")
+            sb.appendLine("Dashboard boards: " + p.getOrNull(0).orEmpty().ifBlank { "(không thấy)" })
+            sb.appendLine("Dashboard dòng bình luận: " + p.getOrNull(1) + ", trạng thái: " + p.getOrNull(2))
+        }
+    } catch (e: Exception) {
+        sb.appendLine("Lỗi chẩn đoán: " + (e.message?.take(120) ?: "?"))
+    }
+    return sb.toString()
+}
 
 // ---------- Tab Tài khoản: hồ sơ + theo dõi + giao diện ----------
 
@@ -51,6 +94,11 @@ fun AccountScreen(
     var myCount by remember { mutableStateOf(0) }
     // Lịch sử thật từ Dashboard member (board "Bài mới bình luận")
     var dashMine by remember { mutableStateOf<List<MyCommented>>(emptyList()) }
+    // Chẩn đoán phiên
+    var showDiag by remember { mutableStateOf(false) }
+    var diagText by remember { mutableStateOf("Chưa chạy.") }
+    var diagRunning by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
     LaunchedEffect(logged) {
         try {
             myArticles = trackStore.tracked().take(10)
@@ -126,6 +174,26 @@ fun AccountScreen(
                     supportingContent = { Text(if (logged) "Ai thích / không thích bình luận của bạn • bấm để xem" else "Đăng nhập để xem lịch sử thông báo") },
                     leadingContent = { Icon(Icons.Default.Notifications, null) },
                     modifier = Modifier.clickable(onClick = onNotifs)
+                )
+                HorizontalDivider()
+            }
+            // Chẩn đoán phiên đăng nhập
+            item {
+                ListItem(
+                    headlineContent = { Text("Kiểm tra phiên đăng nhập") },
+                    supportingContent = { Text("Bình luận báo thiếu login thì bấm để xem kẹt ở đâu") },
+                    leadingContent = { Icon(Icons.Default.BugReport, null) },
+                    modifier = Modifier.clickable {
+                        showDiag = true
+                        if (!diagRunning) {
+                            diagRunning = true
+                            diagText = "Đang kiểm tra…"
+                            scope.launch {
+                                diagText = runSessionDiag(auth.currentCookies().keys.toList())
+                                diagRunning = false
+                            }
+                        }
+                    }
                 )
                 HorizontalDivider()
             }
@@ -238,6 +306,25 @@ fun AccountScreen(
                     leadingContent = { Icon(Icons.Default.Info, null) }
                 )
             }
+        }
+        if (showDiag) {
+            AlertDialog(
+                onDismissRequest = { showDiag = false },
+                title = { Text("Chẩn đoán phiên") },
+                text = {
+                    Text(diagText,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.verticalScroll(rememberScrollState()))
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        clipboard.setText(AnnotatedString(diagText))
+                    }) { Text("Sao chép") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDiag = false }) { Text("Đóng") }
+                }
+            )
         }
     }
 }

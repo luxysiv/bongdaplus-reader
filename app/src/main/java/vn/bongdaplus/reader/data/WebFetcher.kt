@@ -136,6 +136,119 @@ object WebFetcher {
         }
     }
 
+    /**
+     * Mở trang, chạy JS hành động (bấm nút của web), đợi rồi đọc JS kết quả.
+     * Toàn bộ trong 1 khóa để không lẫn với request khác. Dùng cho các thao tác
+     * cần phiên thật: gửi bình luận, thích/không thích, cảm xúc bài.
+     * Trả kết quả readJs đã giải escape, null khi lỗi/timeout.
+     */
+    suspend fun loadClickRead(
+        pageUrl: String,
+        actionJs: String,
+        readJs: String,
+        settleMs: Long = 1500,
+        waitAfterMs: Long = 3000,
+    ): String? {
+        val wv = webView ?: return null
+        return mutex.withLock {
+            withContext(Dispatchers.Main) {
+                // 1) tải trang
+                val loaded = suspendCancellableCoroutine { cont ->
+                    var done = false
+                    fun finish(v: Boolean) { if (!done) { done = true; cont.resume(v) } }
+                    val handler = Handler(Looper.getMainLooper())
+                    val timeout = Runnable { try { wv.stopLoading() } catch (_: Exception) { }; finish(false) }
+                    handler.postDelayed(timeout, TIMEOUT_MS)
+                    try {
+                        wv.webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView, u: String) {
+                                handler.postDelayed({
+                                    handler.removeCallbacks(timeout); finish(true)
+                                }, settleMs)
+                            }
+                        }
+                        wv.loadUrl(pageUrl)
+                    } catch (_: Exception) { handler.removeCallbacks(timeout); finish(false) }
+                    cont.invokeOnCancellation {
+                        handler.removeCallbacks(timeout)
+                        try { wv.stopLoading() } catch (_: Exception) { }
+                    }
+                }
+                if (!loaded) return@withContext null
+                // 2) chạy hành động (không cần kết quả)
+                try { wv.evaluateJavascript(actionJs) { _ -> } } catch (_: Exception) { return@withContext null }
+                // 3) đợi server xử lý
+                try { kotlinx.coroutines.delay(waitAfterMs) } catch (_: Exception) { return@withContext null }
+                // 4) đọc kết quả
+                try {
+                    suspendCancellableCoroutine { cont2 ->
+                        var done2 = false
+                        val h2 = Handler(Looper.getMainLooper())
+                        val to2 = Runnable { if (!done2) { done2 = true; cont2.resume(null as String?) } }
+                        h2.postDelayed(to2, 15000)
+                        try {
+                            wv.evaluateJavascript(readJs) { html ->
+                                if (!done2) {
+                                    done2 = true; h2.removeCallbacks(to2)
+                                    cont2.resume(html.unescapeJsString())
+                                }
+                            }
+                        } catch (_: Exception) { if (!done2) { done2 = true; cont2.resume(null as String?) } }
+                        cont2.invokeOnCancellation { h2.removeCallbacks(to2) }
+                    }
+                } catch (_: Exception) { null }
+            }
+        }
+    }
+
+    /** Mở trang, đợi render, chạy 1 đoạn JS lấy chuỗi. */
+    suspend fun loadAndEval(pageUrl: String, js: String, settleMs: Long = 1500): String? {
+        val wv = webView ?: return null
+        return mutex.withLock {
+            withContext(Dispatchers.Main) {
+                val loaded = suspendCancellableCoroutine { cont ->
+                    var done = false
+                    fun finish(v: Boolean) { if (!done) { done = true; cont.resume(v) } }
+                    val handler = Handler(Looper.getMainLooper())
+                    val timeout = Runnable { try { wv.stopLoading() } catch (_: Exception) { }; finish(false) }
+                    handler.postDelayed(timeout, TIMEOUT_MS)
+                    try {
+                        wv.webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView, u: String) {
+                                handler.postDelayed({
+                                    handler.removeCallbacks(timeout); finish(true)
+                                }, settleMs)
+                            }
+                        }
+                        wv.loadUrl(pageUrl)
+                    } catch (_: Exception) { handler.removeCallbacks(timeout); finish(false) }
+                    cont.invokeOnCancellation {
+                        handler.removeCallbacks(timeout)
+                        try { wv.stopLoading() } catch (_: Exception) { }
+                    }
+                }
+                if (!loaded) return@withContext null
+                try {
+                    suspendCancellableCoroutine { cont2 ->
+                        var done2 = false
+                        val h2 = Handler(Looper.getMainLooper())
+                        val to2 = Runnable { if (!done2) { done2 = true; cont2.resume(null as String?) } }
+                        h2.postDelayed(to2, 15000)
+                        try {
+                            wv.evaluateJavascript(js) { r ->
+                                if (!done2) {
+                                    done2 = true; h2.removeCallbacks(to2)
+                                    cont2.resume(r.unescapeJsString())
+                                }
+                            }
+                        } catch (_: Exception) { if (!done2) { done2 = true; cont2.resume(null as String?) } }
+                        cont2.invokeOnCancellation { h2.removeCallbacks(to2) }
+                    }
+                } catch (_: Exception) { null }
+            }
+        }
+    }
+
     private class PostBridge(val onDone: (String?) -> Unit) {
         @JavascriptInterface
         fun onResult(t: String?) { onDone(t) }
