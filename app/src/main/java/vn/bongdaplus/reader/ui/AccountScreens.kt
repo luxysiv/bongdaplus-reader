@@ -96,6 +96,8 @@ fun AccountScreen(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
     var myArticles by remember { mutableStateOf<List<Article>>(emptyList()) }
+    // Fallback local: CHỈ bài đã gửi bình luận trong app (kèm text), không phải bài đã đọc
+    var mySent by remember { mutableStateOf<List<Pair<Article, String>>>(emptyList()) }
     var myCount by remember { mutableStateOf(0) }
     // Lịch sử thật từ Dashboard member (board "Bài mới bình luận")
     var dashMine by remember { mutableStateOf<List<MyCommented>>(emptyList()) }
@@ -107,6 +109,15 @@ fun AccountScreen(
     LaunchedEffect(logged) {
         try {
             myArticles = trackStore.tracked().take(10)
+            // Chỉ giữ bài có text bình luận đã gửi (bài mới mở đọc không tính)
+            val sent = mutableListOf<Pair<Article, String>>()
+            for (a in myArticles) {
+                val t = try { trackStore.myTexts(a.id).firstOrNull().orEmpty() }
+                catch (_: Exception) { "" }
+                if (t.isNotBlank()) sent += a to t
+                if (sent.size >= 5) break
+            }
+            mySent = sent
             myCount = myArticles.sumOf { trackStore.myTexts(it.id).size }
         } catch (_: Exception) { }
         // Ưu tiên dữ liệu Dashboard thật khi đã login (cookie gộp cả member domain)
@@ -206,7 +217,7 @@ fun AccountScreen(
             item {
                 val dashN = dashMine.size
                 ListItem(
-                    headlineContent = { Text(if (dashN > 0) "Bình luận của tôi ($dashN bài mới nhất)" else "Bình luận của tôi (${myArticles.size} bài${if (myCount > 0) ", $myCount lượt gửi" else ""})") },
+                    headlineContent = { Text(if (dashN > 0) "Bình luận của tôi ($dashN bài mới nhất)" else "Bình luận của tôi (${mySent.size} bài${if (myCount > 0) ", $myCount lượt gửi" else ""})") },
                     supportingContent = { Text(if (logged) "Theo Dashboard member • bấm để mở đúng comment" else "Đăng nhập rồi bình luận, bài sẽ tự hiện ở đây") },
                     leadingContent = { Icon(Icons.Default.ChatBubble, null) }
                 )
@@ -219,15 +230,16 @@ fun AccountScreen(
                             modifier = Modifier.clickable { onOpenArticle(m.article) }
                         )
                     }
-                } else if (myArticles.isEmpty()) {
+                } else if (mySent.isEmpty()) {
                     Text("Chưa có bài nào. Mở tin rồi gửi bình luận nhé.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 8.dp))
                 } else {
-                    myArticles.take(5).forEach { a ->
+                    mySent.forEach { (a, t) ->
                         ListItem(
                             headlineContent = { Text(a.title, maxLines = 2, style = MaterialTheme.typography.bodyMedium) },
+                            supportingContent = { Text("“${t.take(80)}”") },
                             leadingContent = { Icon(Icons.Default.Comment, null) },
                             modifier = Modifier.clickable { onOpenArticle(a) }
                         )

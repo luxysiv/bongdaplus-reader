@@ -407,14 +407,22 @@ object BongDaPlusScraper {
                 val doc = loadDoc("https://member.bongdaplus.vn/Identity/Account/Manage/DashBoard", cookies)
                 // nếu bị đá về trang login thì không có board
                 if (doc.selectFirst("input#Input_Email, form#account") != null) return@withContext emptyList()
+                fun norm(s: String): String = try {
+                    java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFC)
+                } catch (_: Exception) { s }
                 val board = doc.select("div.board").firstOrNull {
-                    it.selectFirst("div.brd-cap")?.text()?.contains("Bài mới bình luận") == true
+                    norm(it.selectFirst("div.brd-cap")?.text() ?: "").contains(norm("Bài mới bình luận"))
+                } ?: doc.select("div.board").firstOrNull {
+                    // Dự phòng khi caption thiếu chữ "mới" hoặc dấu khác chuẩn
+                    norm(it.selectFirst("div.brd-cap")?.text() ?: "").contains(norm("bình luận"))
                 } ?: return@withContext emptyList()
                 board.select("ul.news-lst li.news").mapNotNull { li ->
                     val aTitle = li.selectFirst("a.title") ?: return@mapNotNull null
                     val articleUrl = absUrl(aTitle.attr("href").trim())
                     if (articleUrl.isBlank()) return@mapNotNull null
                     val cmtA = li.select("span.info a[href]").firstOrNull { it.attr("href").contains("#") }
+                        ?: li.select("a[href*=txtcomment]").firstOrNull()
+                        ?: li.select("a[href*=\\#]").firstOrNull()
                         ?: return@mapNotNull null
                     val commentUrl = absUrl(cmtA.attr("href").trim())
                     val commentId = commentUrl.substringAfter("#", "").trim()
@@ -443,55 +451,67 @@ object BongDaPlusScraper {
             fetchMemberNotificationsDiv(cookies)
         }
 
-    /** API JSON thật: GET /GetNotification (XHR) -> mảng thông báo. Parse chịu lỗi tên field. */
+    /** API JSON thật: GET /GetNotificationGeneralInitiator (XHR) -> mảng thông báo.
+     * Schema thật (user bắt từ web): id, fullNameFrom, objectId, commentId,
+     * notiType, contents (mẩu HTML <a><b>Actor</b> text <b>Bài</b></a><span.info>time),
+     * postedDate, isRead, urlPath (URL sạch, neo #txtcomment_ đúng).
+     * Fallback /GetNotification khi endpoint chính rỗng. */
     suspend fun fetchNotificationsApi(cookies: Map<String, String>): List<MemberNotification> =
         withContext(Dispatchers.IO) {
             val bust = System.currentTimeMillis()
-            val body = Http.get("$BASE/GetNotification?t=$bust", "$BASE/", xhr = true)?.html
-                ?: Jsoup.connect("$BASE/GetNotification")
-                    .userAgent(UA).timeout(15000).cookies(cookies)
-                    .header("Accept", "application/json, text/javascript, */*; q=0.01")
-                    .header("X-Requested-With", "XMLHttpRequest")
-                    .ignoreContentType(true).get().body().text()
-            val arr = try {
-                val t = body.trim()
-                when {
-                    t.startsWith("[") -> org.json.JSONArray(t)
-                    t.startsWith("{") -> {
-                        val o = org.json.JSONObject(t)
-                        o.optJSONArray("data") ?: o.optJSONArray("items")
-                        ?: o.optJSONArray("notifications") ?: org.json.JSONArray()
-                    }
-                    else -> org.json.JSONArray()
-                }
-            } catch (_: Exception) { return@withContext emptyList() }
-            fun str(o: org.json.JSONObject, vararg keys: String): String {
-                for (k in keys) {
-                    val v = o.optString(k, "").trim()
-                    if (v.isNotBlank() && v != "null") return v
-                }
-                return ""
-            }
+            val bodies = listOf(
+                Http.get("$BASE/GetNotificationGeneralInitiator?t=$bust", "$BASE/", xhr = true)?.html,
+                Http.get("$BASE/GetNotification?t=$bust", "$BASE/", xhr = true)?.html
+            ).filter { !it.isNullOrBlank() }
+            if (bodies.isEmpty()) return@withContext emptyList()
             val out = mutableListOf<MemberNotification>()
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: continue
-                val text = str(o, "content", "message", "text", "title", "description", "body", "Content", "Message", "Title")
-                if (text.isBlank()) continue
-                val actor = str(o, "actor", "actorName", "from", "fromUser", "userName", "sender", "ActorName", "UserName")
-                    .ifBlank { "Ai đó" }
-                val href = str(o, "url", "link", "href", "postUrl", "articleUrl", "targetUrl", "Url", "Link")
-                val url = if (href.isBlank()) "" else absUrl(href)
-                val time = str(o, "time", "timeAgo", "createdTime", "createdAt", "date", "sendTime", "displayTime", "Time")
-                val action = when {
-                    text.contains("không thích", true) -> "không thích"
-                    text.contains("thích", true) -> "thích"
-                    text.contains("trả lời", true) -> "trả lời"
-                    text.contains("duyệt", true) -> "duyệt"
-                    else -> "bình luận"
+            for (body in bodies) {
+                val arr = try {
+                    val t = body.trim()
+                    when {
+                        t.startsWith("[") -> org.json.JSONArray(t)
+                        t.startsWith("{") -> {
+                            val o = org.json.JSONObject(t)
+                            o.optJSONArray("data") ?: o.optJSONArray("items")
+                            ?: o.optJSONArray("notifications") ?: org.json.JSONArray()
+                        }
+                        else -> org.json.JSONArray()
+                    }
+                } catch (_: Exception) { continue }
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val html = o.optString("contents").trim()
+                    if (html.isBlank()) continue
+                    // contents là HTML: parse lấy text + actor + giờ
+                    val frag = try { Jsoup.parseBodyFragment(html) } catch (_: Exception) { continue }
+                    val a = frag.selectFirst("a[href]")
+                    val full = (a?.text() ?: frag.text()).trim().replace(Regex("\\s+"), " ")
+                    if (full.isBlank()) continue
+                    var actor = a?.selectFirst("b")?.text()?.trim()
+                        .ifNullOrBlank { o.optString("fullNameFrom").trim().ifBlank { "Ai đó" } }
+                    actor = actor.replace(Regex("\\s+"), " ")
+                    // urlPath sạch (neo #txtcomment_ đúng); contents href đôi khi dính id lặp
+                    var href = o.optString("urlPath").trim().ifBlank { a?.attr("href")?.trim().orEmpty() }
+                    if (href.isBlank()) continue
+                    if (href.startsWith("/")) href = href.substring(1)
+                    val url = absUrl(href)
+                    val time = frag.selectFirst("span.info")?.text()?.trim()
+                        .ifBlank { o.optString("postedDate").trim() }.orEmpty()
+                    val action = when {
+                        full.contains("không thích", true) -> "không thích"
+                        full.contains("thích", true) -> "thích"
+                        full.contains("trả lời", true) -> "trả lời"
+                        full.contains("duyệt", true) -> "duyệt"
+                        else -> "bình luận"
+                    }
+                    val cid = o.opt("commentId")?.toString()?.takeIf { it != "null" }.orEmpty()
+                    val oid = o.opt("objectId")?.toString()?.takeIf { it != "null" }.orEmpty()
+                    // Key ổn định theo sự kiện (actor+action+comment), không theo id/time:
+                    // server trả nhiều dòng cho cùng 1 lượt burst, tránh báo trùng.
+                    val key = "$actor|$action|$oid|$cid".hashCode().toString() + "|" + url.hashCode()
+                    out += MemberNotification(key, actor, action, full, url, time)
                 }
-                // Cùng công thức key với bản div để không báo trùng sau khi đổi nguồn
-                val key = "$actor|$action|$url|$time".hashCode().toString() + "|" + url.hashCode()
-                out += MemberNotification(key, actor, action, text.replace(Regex("\\s+"), " "), url, time)
+                if (out.isNotEmpty()) break
             }
             out.distinctBy { it.key }.take(30)
         }
