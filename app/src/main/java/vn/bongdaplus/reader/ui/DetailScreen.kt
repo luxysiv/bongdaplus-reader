@@ -55,6 +55,8 @@ fun DetailScreen(
     val logged by auth.loggedIn.collectAsState(initial = false)
     val fontScale by prefs.fontScale.collectAsState(initial = 1f)
     var draft by remember { mutableStateOf("") }
+    var replyTo by remember { mutableStateOf<Comment?>(null) }
+    val myVotes by vm.myVotes.collectAsState()
     val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
 
     LaunchedEffect(article.url) {
@@ -125,13 +127,22 @@ fun DetailScreen(
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline
                         )
                         Spacer(Modifier.height(8.dp))
-                        // Cảm xúc thật từ server
+                        // Cảm xúc thật từ server — bấm để Thích/Tim/Wow (cần đăng nhập)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("👍 ${d.emotion.liked}", style = MaterialTheme.typography.bodySmall)
+                            Text("👍 ${d.emotion.liked}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (logged) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.clickable { if (logged) vm.reactArticle(1) else onLogin() })
                             Spacer(Modifier.width(12.dp))
-                            Text("❤️ ${d.emotion.heart}", style = MaterialTheme.typography.bodySmall)
+                            Text("❤️ ${d.emotion.heart}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (logged) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.clickable { if (logged) vm.reactArticle(2) else onLogin() })
                             Spacer(Modifier.width(12.dp))
-                            Text("😮 ${d.emotion.wow}", style = MaterialTheme.typography.bodySmall)
+                            Text("😮 ${d.emotion.wow}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (logged) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.clickable { if (logged) vm.reactArticle(4) else onLogin() })
                             Spacer(Modifier.width(12.dp))
                             Text("💬 $cmtCount bình luận",
                                 style = MaterialTheme.typography.bodySmall,
@@ -164,15 +175,32 @@ fun DetailScreen(
                 } else if (comments.isEmpty()) {
                     item { EmptyState("Chưa có bình luận. Hãy là người đầu tiên!") }
                 } else {
-                    items(comments, key = { it.id }) { c -> CommentCard(c, fontScale) }
+                    items(comments, key = { it.id }) { c ->
+                        CommentCard(c, fontScale,
+                            voted = myVotes[c.id] ?: 0,
+                            canVote = logged,
+                            onLike = { vm.reactComment(c.id, true) },
+                            onDislike = { vm.reactComment(c.id, false) },
+                            onReply = { replyTo = c })
+                    }
                 }
                 // Hộp gửi
                 item {
                     Column(Modifier.padding(12.dp)) {
                         if (logged) {
+                            replyTo?.let { r ->
+                                Row(verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(bottom = 6.dp)) {
+                                    Text("↩️ Trả lời @${r.name.trim()}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.weight(1f))
+                                    TextButton(onClick = { replyTo = null }) { Text("Huỷ") }
+                                }
+                            }
                             OutlinedTextField(
                                 value = draft, onValueChange = { if (it.length <= 1000) draft = it },
-                                placeholder = { Text("Chia sẻ suy nghĩ của bạn… (cần duyệt)") },
+                                placeholder = { Text(if (replyTo != null) "Trả lời ${replyTo?.name}… (cần duyệt)" else "Chia sẻ suy nghĩ của bạn… (cần duyệt)") },
                                 modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 5
                             )
                             Spacer(Modifier.height(8.dp))
@@ -187,15 +215,19 @@ fun DetailScreen(
                                 Button(
                                     onClick = {
                                         val txt = draft
+                                        val rt = replyTo
                                         scope.launch {
-                                            vm.sendComment(txt, article, trackStore)
+                                            vm.sendComment(txt, article, trackStore,
+                                                parentId = rt?.id ?: "0",
+                                                replyId = "0",
+                                                replyName = rt?.name ?: "")
                                             // Tự lưu tin để Worker luôn quét, kể cả user quên bấm Lưu
                                             try { if (!isSaved) bookmarks.toggle(article) } catch (_: Exception) { }
                                         }
-                                        draft = ""
+                                        draft = ""; replyTo = null
                                     },
                                     enabled = !sending && draft.isNotBlank()
-                                ) { Text(if (sending) "Đang gửi…" else "Gửi") }
+                                ) { Text(if (sending) "Đang gửi…" else if (replyTo != null) "Trả lời" else "Gửi") }
                             }
                         } else {
                             Card(
@@ -268,7 +300,10 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
 }
 
 @Composable
-private fun CommentCard(c: Comment, fontScale: Float) {
+private fun CommentCard(c: Comment, fontScale: Float,
+                        voted: Int = 0, canVote: Boolean = false,
+                        onLike: () -> Unit = {}, onDislike: () -> Unit = {},
+                        onReply: () -> Unit = {}) {
     Row(Modifier.padding(12.dp, 8.dp)) {
         Box(
             modifier = Modifier.size(40.dp).clip(CircleShape)
@@ -293,13 +328,24 @@ private fun CommentCard(c: Comment, fontScale: Float) {
             Text(c.text, fontSize = (15 * fontScale).sp,
                 lineHeight = (23 * fontScale).sp)
             Spacer(Modifier.height(4.dp))
-            Row {
-                Text("👍 ${c.likes}", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline)
-                if (c.dislikes > 0) {
-                    Spacer(Modifier.width(10.dp))
-                    Text("👎 ${c.dislikes}", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("👍 ${c.likes}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (voted == 1) FontWeight.Bold else null,
+                    color = if (voted == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.clickable(enabled = canVote, onClick = onLike))
+                Spacer(Modifier.width(10.dp))
+                Text("👎 ${c.dislikes}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (voted == 7) FontWeight.Bold else null,
+                    color = if (voted == 7) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.clickable(enabled = canVote, onClick = onDislike))
+                if (canVote) {
+                    Spacer(Modifier.width(12.dp))
+                    Text("↩️ Trả lời",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable(onClick = onReply))
                 }
             }
         }

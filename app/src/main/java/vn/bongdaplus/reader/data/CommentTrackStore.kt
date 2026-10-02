@@ -106,4 +106,35 @@ class CommentTrackStore(private val ctx: Context) {
             (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
         } catch (_: Exception) { emptyList() }
     }
+
+    /** Lượt thích đã thấy: commentId -> likes (để báo khi bình luận của bạn được thích thêm) */
+    suspend fun likeCounts(articleId: String): Map<String, Int> {
+        return try {
+            val o = readObj().optJSONObject(articleId)?.optJSONObject("likes") ?: return emptyMap()
+            o.keys().asSequence().associateWith { o.optInt(it) }
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    /** Lượt không thích đã thấy: commentId -> dislikes */
+    suspend fun dislikeCounts(articleId: String): Map<String, Int> {
+        return try {
+            val o = readObj().optJSONObject(articleId)?.optJSONObject("dislikes") ?: return emptyMap()
+            o.keys().asSequence().associateWith { o.optInt(it) }
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    suspend fun saveVoteCounts(articleId: String, likes: Map<String, Int>, dislikes: Map<String, Int>) {
+        try {
+            val o = readObj()
+            val cur = try { o.getJSONObject(articleId) } catch (_: Exception) { JSONObject() }
+            val lo = JSONObject()
+            likes.entries.take(60).forEach { lo.put(it.key, it.value) }
+            cur.put("likes", lo)
+            val dlo = JSONObject()
+            dislikes.entries.take(60).forEach { dlo.put(it.key, it.value) }
+            cur.put("dislikes", dlo)
+            o.put(articleId, cur)
+            writeObj(o)
+        } catch (_: Exception) { }
+    }
 }

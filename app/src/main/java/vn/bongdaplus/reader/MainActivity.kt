@@ -139,7 +139,8 @@ class MainActivity : ComponentActivity() {
                             AccountScreen(auth, prefs,
                                 onLogin = { nav.navigate("login") },
                                 onRegister = { nav.navigate("register") },
-                                onSaved = { nav.navigate("saved") })
+                                onSaved = { nav.navigate("saved") },
+                                onOpenArticle = ::openArticle)
                         }
                     }
                 }

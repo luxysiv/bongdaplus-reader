@@ -34,6 +34,7 @@ fun AccountScreen(
     onLogin: () -> Unit,
     onRegister: () -> Unit,
     onSaved: () -> Unit,
+    onOpenArticle: (Article) -> Unit = {},
 ) {
     val logged by auth.loggedIn.collectAsState(initial = false)
     val email by auth.email.collectAsState(initial = "")
@@ -42,6 +43,16 @@ fun AccountScreen(
     val notifyCmt by auth.notifyComments.collectAsState(initial = true)
     val theme by prefs.themeMode.collectAsState(initial = "system")
     val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
+    var myArticles by remember { mutableStateOf<List<Article>>(emptyList()) }
+    var myCount by remember { mutableStateOf(0) }
+    LaunchedEffect(logged) {
+        try {
+            myArticles = trackStore.tracked().take(10)
+            myCount = myArticles.sumOf { trackStore.myTexts(it.id).size }
+        } catch (_: Exception) { }
+    }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("Tài khoản", fontWeight = FontWeight.Bold) })
@@ -100,6 +111,29 @@ fun AccountScreen(
                 )
                 HorizontalDivider()
             }
+            // Bình luận của tôi (member)
+            item {
+                ListItem(
+                    headlineContent = { Text("Bình luận của tôi (${myArticles.size} bài${if (myCount > 0) ", $myCount lượt gửi" else ""})") },
+                    supportingContent = { Text(if (logged) "Bài bạn đã bình luận • bấm để mở • được duyệt/thích sẽ báo chi tiết" else "Đăng nhập rồi bình luận, bài sẽ tự hiện ở đây") },
+                    leadingContent = { Icon(Icons.Default.ChatBubble, null) }
+                )
+                if (myArticles.isEmpty()) {
+                    Text("Chưa có bài nào. Mở tin rồi gửi bình luận nhé.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 8.dp))
+                } else {
+                    myArticles.take(5).forEach { a ->
+                        ListItem(
+                            headlineContent = { Text(a.title, maxLines = 2, style = MaterialTheme.typography.bodyMedium) },
+                            leadingContent = { Icon(Icons.Default.Comment, null) },
+                            modifier = Modifier.clickable { onOpenArticle(a) }
+                        )
+                    }
+                }
+                HorizontalDivider()
+            }
             // Thông báo tin mới
             item {
                 ListItem(
@@ -116,7 +150,7 @@ fun AccountScreen(
             item {
                 ListItem(
                     headlineContent = { Text("Báo bình luận mới") },
-                    supportingContent = { Text("Khi bài đã lưu có thêm bình luận trên BongdaPlus") },
+                    supportingContent = { Text("Bình luận mới + trả lời + 👍/👎 tăng ở bài bạn đã bình luận/lưu") },
                     leadingContent = { Icon(Icons.Default.ChatBubble, null) },
                     trailingContent = {
                         Switch(checked = notifyCmt, onCheckedChange = { scope.launch { auth.setNotifyComments(it) } })

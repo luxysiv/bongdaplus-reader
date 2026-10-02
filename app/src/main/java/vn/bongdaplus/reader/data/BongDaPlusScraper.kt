@@ -289,17 +289,75 @@ object BongDaPlusScraper {
 
     /** Gửi bình luận thật (cần cookie login). True = server đã nhận (chờ duyệt). */
     suspend fun postComment(objectId: String, objectType: String, text: String,
-                            cookies: Map<String, String>): Boolean =
+                            cookies: Map<String, String>,
+                            parentId: String = "0", replyId: String = "0",
+                            replyName: String = ""): Boolean =
         withContext(Dispatchers.IO) {
             try {
                 val res = Jsoup.connect("$BASE/postcomment/")
                     .userAgent(UA).timeout(15000).cookies(cookies)
                     .data("objectid", objectId, "objecttype", objectType,
-                        "parentid", "0", "replyid", "0", "replyname", "", "comment", text)
+                        "parentid", parentId, "replyid", replyId,
+                        "replyname", replyName, "comment", text)
                     .ignoreContentType(true).post()
                 val b = res.body().text()
                 b.contains("duyệt", true) || b.contains("thành công", true) || b.isNotBlank()
             } catch (_: Exception) { false }
+        }
+
+    /**
+     * Thích / Không thích 1 bình luận (API thật từ bongdaplus.js).
+     * POST /setCommentEmotion/{objectId}/{commentId}/1 (thích) hoặc /7 (không thích).
+     */
+    suspend fun setCommentEmotion(objectId: String, commentId: String, like: Boolean,
+                                  cookies: Map<String, String>): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val type = if (like) "1" else "7"
+                Jsoup.connect("$BASE/setCommentEmotion/$objectId/$commentId/$type")
+                    .userAgent(UA).timeout(15000).cookies(cookies)
+                    .ignoreContentType(true).post()
+                true
+            } catch (_: Exception) { false }
+        }
+
+    /**
+     * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow (theo loadNewsEmotion trong bongdaplus.js).
+     * POST /setNewsEmotion/{objectId}/{objectType}/{emotionType}
+     */
+    suspend fun setNewsEmotion(objectId: String, objectType: String, emotionType: Int,
+                                cookies: Map<String, String>): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                Jsoup.connect("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType")
+                    .userAgent(UA).timeout(15000).cookies(cookies)
+                    .ignoreContentType(true).post()
+                true
+            } catch (_: Exception) { false }
+        }
+
+    /**
+     * Member đã vote bình luận nào: GET /GetCommentEmotion/{objectId}/{objectType}
+     * trả về danh sách (commentId, emotionType). emotionType==1 là đã Thích.
+     * Dùng để tô sáng nút 👍👎 của chính member.
+     */
+    suspend fun getMyCommentVotes(objectId: String, objectType: String,
+                                  cookies: Map<String, String>): Map<String, Int> =
+        withContext(Dispatchers.IO) {
+            if (objectId.isBlank() || cookies.isEmpty()) return@withContext emptyMap()
+            try {
+                val body = Jsoup.connect("$BASE/GetCommentEmotion/$objectId/$objectType")
+                    .userAgent(UA).timeout(15000).cookies(cookies)
+                    .ignoreContentType(true).get().body().text()
+                val arr = try { org.json.JSONArray(body) } catch (_: Exception) { return@withContext emptyMap() }
+                val out = mutableMapOf<String, Int>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val cid = o.optString("commentId").ifBlank { o.optString("commentid") }
+                    if (cid.isNotBlank()) out[cid] = o.optInt("emotionType", o.optInt("emotiontype"))
+                }
+                out
+            } catch (_: Exception) { emptyMap() }
         }
 
     private fun String?.ifNullOrBlank(def: () -> String): String =

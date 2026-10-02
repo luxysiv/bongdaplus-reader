@@ -123,6 +123,9 @@ class DetailViewModel : ViewModel() {
     val sending: StateFlow<Boolean> = _sending
     private val _sendMsg = MutableStateFlow<String?>(null)
     val sendMsg: StateFlow<String?> = _sendMsg
+    // vote của chính member: commentId -> emotionType (1=đã Thích)
+    private val _myVotes = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val myVotes: StateFlow<Map<String, Int>> = _myVotes
 
     fun load(article: Article) {
         viewModelScope.launch {
@@ -150,21 +153,64 @@ class DetailViewModel : ViewModel() {
         viewModelScope.launch {
             _loadingComments.value = true
             try {
+                val ck = cookiesOf(cookieProvider)
                 _comments.value = BongDaPlusScraper.fetchComments(
-                    d.objectId, d.objectType, 1, cookiesOf(cookieProvider))
+                    d.objectId, d.objectType, 1, ck)
+                // trạng thái vote của member (để tô sáng 👍👎 đã bấm)
+                try { _myVotes.value = BongDaPlusScraper.getMyCommentVotes(d.objectId, d.objectType, ck) }
+                catch (_: Exception) { }
             } catch (_: Exception) { }
             _loadingComments.value = false
         }
     }
 
-    fun sendComment(text: String, article: Article? = null, trackStore: CommentTrackStore? = null) {
+    /** Thích / Bỏ thích 1 bình luận (cần đăng nhập). Cập nhật số ngay trên UI. */
+    fun reactComment(commentId: String, like: Boolean) {
+        val d = _detail.value ?: return
+        viewModelScope.launch {
+            val ok = try {
+                BongDaPlusScraper.setCommentEmotion(d.objectId, commentId, like, cookiesOf(cookieProvider))
+            } catch (_: Exception) { false }
+            if (ok) {
+                _comments.value = _comments.value.map {
+                    if (it.id != commentId) it
+                    else if (like) it.copy(likes = it.likes + 1) else it.copy(dislikes = it.dislikes + 1)
+                }
+                val cur = _myVotes.value.toMutableMap()
+                cur[commentId] = if (like) 1 else 7
+                _myVotes.value = cur
+            }
+        }
+    }
+
+    /** Cảm xúc bài viết: 1=👍 2=❤️ 4=😮 (cần đăng nhập, bấm lại để đổi). */
+    fun reactArticle(emotionType: Int) {
+        val d = _detail.value ?: return
+        viewModelScope.launch {
+            try {
+                if (BongDaPlusScraper.setNewsEmotion(d.objectId, d.objectType, emotionType, cookiesOf(cookieProvider))) {
+                    val e = d.emotion
+                    val bumped = when (emotionType) {
+                        1 -> e.copy(liked = e.liked + 1)
+                        2 -> e.copy(heart = e.heart + 1)
+                        else -> e.copy(wow = e.wow + 1)
+                    }
+                    _detail.value = d.copy(emotion = bumped)
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun sendComment(text: String, article: Article? = null, trackStore: CommentTrackStore? = null,
+                    parentId: String = "0", replyId: String = "0", replyName: String = "") {
         val d = _detail.value ?: return
         viewModelScope.launch {
             _sending.value = true; _sendMsg.value = null
             val clean = text.trim()
             val ok = try {
                 BongDaPlusScraper.postComment(
-                    d.objectId, d.objectType, clean, cookiesOf(cookieProvider))
+                    d.objectId, d.objectType, clean, cookiesOf(cookieProvider),
+                    parentId, replyId, replyName)
             } catch (_: Exception) { false }
             _sendMsg.value = if (ok) "Đã gửi! Bình luận chờ duyệt rồi sẽ hiện. Đã bật theo dõi — có bình luận mới sẽ báo chi tiết."
             else "Gửi thất bại — bạn cần đăng nhập tài khoản BongdaPlus."

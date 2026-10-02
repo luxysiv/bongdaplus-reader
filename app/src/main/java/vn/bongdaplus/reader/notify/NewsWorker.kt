@@ -140,19 +140,24 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
                     if (seen.isEmpty() && ids.isNotEmpty()) {
                         // Lần đầu thấy bài này -> chỉ lưu mốc, không báo để tránh spam
                         trackStore.saveSeenIds(a.id, ids, a)
+                        try {
+                            trackStore.saveVoteCounts(a.id,
+                                list.associate { it.id to it.likes },
+                                list.associate { it.id to it.dislikes })
+                        } catch (_: Exception) { }
                         if (counts[a.id] != emo.comments) { counts[a.id] = emo.comments; changed = true }
                         continue
+                    }
+                    // Nhận diện bình luận của chính member (khớp text đã gửi)
+                    val myTexts = try { trackStore.myTexts(a.id) } catch (_: Exception) { emptyList() }
+                    fun isMine(text: String): Boolean = myTexts.any { mt ->
+                        val m = mt.trim().take(30)
+                        m.length >= 8 && (m in text || text.take(30) in mt)
                     }
                     if (ids.isNotEmpty() && seen.isNotEmpty()) {
                         val fresh = list.filter { it.id !in seen }
                         if (fresh.isNotEmpty()) {
-                            val myTexts = try { trackStore.myTexts(a.id) } catch (_: Exception) { emptyList() }
-                            val mine = fresh.firstOrNull { nc ->
-                                myTexts.any { mt ->
-                                    val m = mt.trim().take(30)
-                                    m.length >= 8 && (m in nc.text || nc.text.take(30) in mt)
-                                }
-                            }
+                            val mine = fresh.firstOrNull { nc -> isMine(nc.text) }
                             if (mine != null) {
                                 NotifyHelper.show(
                                     applicationContext,
@@ -174,6 +179,41 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
                             }
                             trackStore.saveSeenIds(a.id, ids, a)
                         }
+                        // Thông báo Thích / Không thích tăng trên bình luận của member
+                        try {
+                            val oldLikes = trackStore.likeCounts(a.id)
+                            val oldDis = trackStore.dislikeCounts(a.id)
+                            if (oldLikes.isNotEmpty() || oldDis.isNotEmpty()) {
+                                for (c in list) {
+                                    if (!isMine(c.text)) continue
+                                    val ol = oldLikes[c.id]
+                                    val od = oldDis[c.id]
+                                    if (ol != null && c.likes > ol) {
+                                        NotifyHelper.show(
+                                            applicationContext,
+                                            "👍 Bình luận của bạn được thích (+${c.likes - ol})",
+                                            "${a.title}\n\"${c.text.take(120)}\" — ${c.likes} thích",
+                                            a.url,
+                                            (c.id.hashCode() % 90000) + 20000
+                                        )
+                                        break
+                                    }
+                                    if (od != null && c.dislikes > od) {
+                                        NotifyHelper.show(
+                                            applicationContext,
+                                            "👎 Bình luận của bạn bị không thích (+${c.dislikes - od})",
+                                            "${a.title}\n\"${c.text.take(120)}\"",
+                                            a.url,
+                                            (c.id.hashCode() % 90000) + 30000
+                                        )
+                                        break
+                                    }
+                                }
+                            }
+                            trackStore.saveVoteCounts(a.id,
+                                list.associate { it.id to it.likes },
+                                list.associate { it.id to it.dislikes })
+                        } catch (_: Exception) { }
                     }
                     // Fallback: không lấy được list chi tiết nhưng số đếm tăng (trang 2+)
                     val old = counts[a.id]
