@@ -409,10 +409,20 @@ private fun ExoVideoPlayer(embedUrl: String, videoId: String?) {
                 factory = { c ->
                     PlayerView(c).also { pv ->
                         pv.player = player
-                        pv.setFullscreenButtonClickListener { fullscreen = true }
+                        // Ẩn nút fullscreen của controller, chỉ dùng 1 nút của app
+                        try {
+                            pv.findViewById<View>(androidx.media3.ui.R.id.exo_fullscreen)
+                                ?.visibility = View.GONE
+                        } catch (_: Exception) { }
                     }
                 },
-                update = { it.player = if (fullscreen) null else player },
+                update = {
+                    it.player = if (fullscreen) null else player
+                    try {
+                        it.findViewById<View>(androidx.media3.ui.R.id.exo_fullscreen)
+                            ?.visibility = View.GONE
+                    } catch (_: Exception) { }
+                },
                 modifier = Modifier.fillMaxSize()
             )
         } else {
