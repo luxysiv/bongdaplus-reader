@@ -1,16 +1,6 @@
 package vn.bongdaplus.reader.ui
 
-import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
-import android.view.View
-import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -34,8 +24,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -313,7 +301,7 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
         }
         is ContentBlock.Video -> {
             Column(Modifier.padding(8.dp, 8.dp)) {
-                // ExoPlayer trước, rớt về WebView khi không giải được luồng
+                // ExoPlayer trước, rớt về mở ngoài khi không giải được luồng
                 ExoVideoPlayer(b.embedUrl, b.videoId)
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -349,7 +337,7 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
     }
 }
 
-/** Phát video bằng ExoPlayer (mượt, nhẹ, fullscreen thật). Rớt về WebView khi lỗi. */
+/** Phát video bằng ExoPlayer (mượt, nhẹ, fullscreen thật). Rớt về mở ngoài khi lỗi. */
 @Composable
 private fun ExoVideoPlayer(embedUrl: String, videoId: String?) {
     val ctx = LocalContext.current
@@ -395,8 +383,8 @@ private fun ExoVideoPlayer(embedUrl: String, videoId: String?) {
     }
 
     if (playError || (!resolving && stream == null)) {
-        // Không giải/phát được bằng ExoPlayer -> player WebView cũ
-        InAppVideoPlayer(embedUrl)
+        // Không phát được bằng ExoPlayer -> mở ngoài (không WebView)
+        VideoExternalCard(embedUrl, videoId)
         return
     }
     Box(
@@ -467,109 +455,27 @@ private fun ExoVideoPlayer(embedUrl: String, videoId: String?) {
     }
 }
 
-/** Trình phát WebView dự phòng (khi ExoPlayer không giải/phát được) */
-@SuppressLint("SetJavaScriptEnabled")
+/** Thẻ mở video ngoài app (khi ExoPlayer không phát được) — không WebView */
 @Composable
-private fun InAppVideoPlayer(embedUrl: String) {
-    val activity = LocalContext.current as? Activity
-    var loadError by remember(embedUrl) { mutableStateOf(false) }
-    var customView by remember(embedUrl) { mutableStateOf<View?>(null) }
-    var customCb by remember(embedUrl) {
-        mutableStateOf<WebChromeClient.CustomViewCallback?>(null)
-    }
-
-    fun exitFullscreen() {
-        try { customCb?.onCustomViewHidden() } catch (_: Exception) { }
-        // onHideCustomView dọn view + hiện system UI
-    }
-
-    BackHandler(enabled = customView != null) { exitFullscreen() }
-
-    if (loadError) {
-        // Rớt phát trong app: mở ngoài bằng trình duyệt/YouTube
-        val ctx = LocalContext.current
-        Card(
-            modifier = Modifier.fillMaxWidth().clickable {
-                try {
-                    ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(embedUrl)))
-                } catch (_: Exception) { }
-            },
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-        ) {
-            Text("⚠️ Không phát được trong app — bấm để mở ngoài",
-                modifier = Modifier.padding(14.dp))
-        }
-        return
-    }
-
-    val html = remember(embedUrl) {
-        val safe = embedUrl.replace("\"", "%22")
-        "<!DOCTYPE html><html><head>" +
-            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no\">" +
-            "<style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}" +
-            "iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style>" +
-            "</head><body>" +
-            "<iframe src=\"$safe\" allow=\"accelerometer; autoplay; clipboard-write; " +
-            "encrypted-media; gyroscope; picture-in-picture; fullscreen\" " +
-            "allowfullscreen referrerpolicy=\"no-referrer-when-downgrade\"></iframe>" +
-            "</body></html>"
-    }
-    AndroidView(
-        factory = { c ->
-            WebView(c).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.mediaPlaybackRequiresUserGesture = false
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-                webViewClient = object : WebViewClient() {
-                    override fun onReceivedError(
-                        view: WebView, request: WebResourceRequest, error: WebResourceError
-                    ) {
-                        if (request.isForMainFrame) loadError = true
-                    }
-                    @Suppress("DEPRECATION")
-                    override fun onReceivedError(
-                        view: WebView, errorCode: Int, description: String?, failingUrl: String?
-                    ) {
-                        loadError = true
-                    }
-                }
-                webChromeClient = object : WebChromeClient() {
-                    override fun onShowCustomView(
-                        view: View?, callback: CustomViewCallback?
-                    ) {
-                        if (customView != null) { callback?.onCustomViewHidden(); return }
-                        customView = view
-                        customCb = callback
-                        try {
-                            activity?.window?.let { w ->
-                                WindowCompat.getInsetsController(w, w.decorView)
-                                    .hide(WindowInsetsCompat.Type.systemBars())
-                            }
-                            view?.let { (activity?.window?.decorView as? ViewGroup)?.addView(it) }
-                        } catch (_: Exception) { }
-                    }
-                    override fun onHideCustomView() {
-                        try {
-                            (customView?.parent as? ViewGroup)?.removeView(customView)
-                            activity?.window?.let { w ->
-                                WindowCompat.getInsetsController(w, w.decorView)
-                                    .show(WindowInsetsCompat.Type.systemBars())
-                            }
-                        } catch (_: Exception) { }
-                        customView = null
-                        customCb = null
-                    }
-                }
-                loadDataWithBaseURL("https://bongdaplus.vn/", html, "text/html", "utf-8", null)
-            }
+private fun VideoExternalCard(embedUrl: String, videoId: String?) {
+    val ctx = LocalContext.current
+    val openUrl = if (!videoId.isNullOrBlank()) "https://www.youtube.com/watch?v=$videoId" else embedUrl
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable {
+            try {
+                ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(openUrl)))
+            } catch (_: Exception) { }
         },
-        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)),
-        onRelease = { try { it.stopLoading(); it.destroy() } catch (_: Exception) { } }
-    )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("▶", fontSize = 22.sp)
+            Spacer(Modifier.width(10.dp))
+            Text("Mở video bằng trình duyệt / YouTube",
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text("↗", fontSize = 18.sp)
+        }
+    }
 }
 
 @Composable

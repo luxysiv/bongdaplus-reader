@@ -39,6 +39,21 @@ class MainActivity : ComponentActivity() {
             val bookmarks = remember { BookmarkStore(appCtx) }
             val prefs = remember { UiPrefs(appCtx) }
             val themeMode by prefs.themeMode.collectAsState(initial = "system")
+            val logged by auth.loggedIn.collectAsState(initial = false)
+
+            // Đã login mà thiếu phiên site: đồng bộ ngầm 1 lần mỗi phiên mở app
+            // (OkHttp HTTP, không WebView) để bình luận/vote khỏi báo thiếu login.
+            LaunchedEffect(logged) {
+                if (logged) {
+                    try {
+                        if (!auth.hasSiteCookie()) {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                BongDaPlusScraper.syncSiteSession()
+                            }
+                        }
+                    } catch (_: Exception) { }
+                }
+            }
 
             NewsTheme(mode = themeMode) {
                 val nav = rememberNavController()
@@ -129,15 +144,19 @@ class MainActivity : ComponentActivity() {
                                 onOAuth = { nav.navigate("login_web") },
                                 onRegister = { nav.navigate("register") })
                         }
+                        // Google/Apple OAuth bắt buộc trình duyệt nhúng (trình duyệt
+                        // ngoài không trả cookie về app được) nên giữ 1 màn WebView
+                        // cho riêng luồng này. Email/đăng ký đã native hoàn toàn.
                         composable("login_web") {
                             LoginScreen(auth,
                                 onBack = { nav.popBackStack() },
                                 onDone = { nav.popBackStack() })
                         }
                         composable("register") {
-                            RegisterScreen(auth,
+                            NativeRegisterScreen(auth,
                                 onBack = { nav.popBackStack() },
-                                onDone = { nav.popBackStack() })
+                                onDone = { nav.popBackStack() },
+                                onLogin = { nav.navigate("login") })
                         }
                         composable("saved") {
                             SavedScreen(bookmarks, onOpen = ::openArticle)

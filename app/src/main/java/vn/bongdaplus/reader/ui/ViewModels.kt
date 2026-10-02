@@ -164,17 +164,41 @@ class DetailViewModel : ViewModel() {
         }
     }
 
-    /** Thích / Bỏ thích 1 bình luận: chỉ hiện số mới sau khi server xác nhận. */
+    /**
+     * Thích/Không thích kiểu web: bấm lại nút đang active = hoàn tác.
+     * Cập nhật UI ngay cho mượt, xong tải lại số thật từ server để chốt.
+     */
     fun reactComment(commentId: String, like: Boolean) {
         val d = _detail.value ?: return
+        val cur = _myVotes.value.toMutableMap()
+        val active = cur[commentId]
+        val undo = (like && active == 1) || (!like && active == 7)
+        // 1) UI ngay: gỡ vote cũ, áp vote mới (trừ khi hoàn tác)
+        _comments.value = _comments.value.map {
+            if (it.id != commentId) it
+            else {
+                var l = it.likes
+                var dl = it.dislikes
+                if (active == 1) l-- else if (active == 7) dl--
+                if (!undo) { if (like) l++ else dl++ }
+                it.copy(likes = l.coerceAtLeast(0), dislikes = dl.coerceAtLeast(0))
+            }
+        }
+        cur[commentId] = when {
+            undo -> 0
+            like -> 1
+            else -> 7
+        }
+        _myVotes.value = cur
+        // 2) Server chốt: tải lại số thật (sai thì UI tự sửa theo server)
         viewModelScope.launch {
             val ok = try {
                 BongDaPlusScraper.setCommentEmotion(
                     d.objectId, commentId, like, cookiesOf(cookieProvider),
                     d.article.url, d.objectType)
             } catch (_: Exception) { false }
-            if (ok) loadComments() // tải lại số thật từ server, không cộng ảo
-            else _sendMsg.value = "👍/👎 thất bại — server chưa nhận, thử lại sau."
+            loadComments()
+            if (!ok) _sendMsg.value = "👍/👎 thất bại — server chưa nhận, thử lại sau."
         }
     }
 

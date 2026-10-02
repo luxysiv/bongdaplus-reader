@@ -327,7 +327,20 @@ fun AccountScreen(
                     }) { Text("Sao chép") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showDiag = false }) { Text("Đóng") }
+                    Row {
+                        TextButton(onClick = {
+                            if (!diagRunning) {
+                                diagRunning = true
+                                diagText = "Đang đồng bộ phiên site…"
+                                scope.launch {
+                                    BongDaPlusScraper.syncSiteSession()
+                                    diagText = runSessionDiag(auth)
+                                    diagRunning = false
+                                }
+                            }
+                        }) { Text("Đồng bộ") }
+                        TextButton(onClick = { showDiag = false }) { Text("Đóng") }
+                    }
                 }
             )
         }

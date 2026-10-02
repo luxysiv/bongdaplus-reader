@@ -152,3 +152,119 @@ fun NativeLoginScreen(
         }
     }
 }
+
+/**
+ * Đăng ký NATIVE qua OkHttp (không WebView): Họ + Tên + Email + Mật khẩu.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NativeRegisterScreen(
+    auth: AuthManager,
+    onBack: () -> Unit,
+    onDone: () -> Unit,
+    onLogin: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var first by remember { mutableStateOf("") }
+    var last by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    var pass2 by remember { mutableStateOf("") }
+    var showPass by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var msg by remember { mutableStateOf<String?>(null) }
+
+    fun doRegister() {
+        if (busy) return
+        if (first.isBlank() || last.isBlank()) { msg = "Nhập họ và tên."; return }
+        if (!email.contains("@")) { msg = "Email chưa đúng."; return }
+        if (pass.length < 6) { msg = "Mật khẩu tối thiểu 6 ký tự."; return }
+        if (pass != pass2) { msg = "Hai mật khẩu chưa khớp."; return }
+        busy = true; msg = "Đang tạo tài khoản…"
+        scope.launch {
+            val r = try { BongDaPlusScraper.registerMember(email, pass, first, last) }
+            catch (_: Exception) { LoginResult.NetworkError }
+            when (r) {
+                is LoginResult.Ok -> {
+                    auth.markLoggedIn(r.name.ifBlank { "$first $last" })
+                    msg = null
+                    onDone()
+                }
+                is LoginResult.Invalid -> msg = r.message
+                LoginResult.NetworkError -> msg = "Lỗi mạng, thử lại sau."
+            }
+            busy = false
+        }
+    }
+
+    Scaffold(topBar = {
+        TopAppBar(
+            title = { Text("Tạo tài khoản", fontWeight = FontWeight.Bold) },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } }
+        )
+    }) { pad ->
+        Column(
+            Modifier.padding(pad).fillMaxSize().padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = first, onValueChange = { first = it },
+                    label = { Text("Họ") }, singleLine = true,
+                    modifier = Modifier.weight(1f), enabled = !busy
+                )
+                OutlinedTextField(
+                    value = last, onValueChange = { last = it },
+                    label = { Text("Tên") }, singleLine = true,
+                    modifier = Modifier.weight(1f), enabled = !busy
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = email, onValueChange = { email = it },
+                label = { Text("Email") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                leadingIcon = { Icon(Icons.Default.Email, null) },
+                modifier = Modifier.fillMaxWidth(), enabled = !busy
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = pass, onValueChange = { pass = it },
+                label = { Text("Mật khẩu (≥ 6 ký tự)") }, singleLine = true,
+                visualTransformation = if (showPass) VisualTransformation.None
+                else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                leadingIcon = { Icon(Icons.Default.Lock, null) },
+                trailingIcon = {
+                    IconButton(onClick = { showPass = !showPass }) {
+                        Icon(if (showPass) Icons.Default.VisibilityOff else Icons.Default.Visibility, null)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(), enabled = !busy
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = pass2, onValueChange = { pass2 = it },
+                label = { Text("Nhập lại mật khẩu") }, singleLine = true,
+                visualTransformation = if (showPass) VisualTransformation.None
+                else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(), enabled = !busy
+            )
+            Spacer(Modifier.height(14.dp))
+            Button(onClick = ::doRegister, enabled = !busy,
+                modifier = Modifier.fillMaxWidth()) {
+                Text(if (busy) "Đang tạo…" else "Tạo tài khoản")
+            }
+            msg?.let {
+                Spacer(Modifier.height(10.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
+            }
+            Spacer(Modifier.weight(1f))
+            Text("Đã có tài khoản? Đăng nhập",
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = onLogin))
+        }
+    }
+}

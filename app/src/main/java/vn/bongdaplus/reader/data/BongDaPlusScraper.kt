@@ -617,11 +617,77 @@ object BongDaPlusScraper {
                     return@withContext LoginResult.Invalid(err)
                 }
                 // Đăng nhập member xong: handshake sang site rồi đọc tên
-                try { Http.get("https://member.bongdaplus.vn/Identity/Account/Login?ReturnUrl=%2FHome%2FLoginFromBongdaplus") } catch (_: Exception) { }
-                try { Http.get("$BASE/") } catch (_: Exception) { }
+                syncSiteSession()
                 LoginResult.Ok(fetchDisplayName(), checkSiteSession())
             } catch (_: Exception) { LoginResult.NetworkError }
         }
+
+    /**
+     * Đăng ký tài khoản mới bằng form native qua OkHttp (không cần WebView).
+     * Thành công thường tự đăng nhập luôn.
+     */
+    suspend fun registerMember(
+        email: String, password: String, firstName: String, lastName: String,
+    ): LoginResult = withContext(Dispatchers.IO) {
+        try {
+            val regUrl = "https://member.bongdaplus.vn/Identity/Account/Register?returnUrl=%2F"
+            val form = try { Http.get(regUrl) } catch (_: Exception) { null }
+                ?: return@withContext LoginResult.NetworkError
+            val doc = try { Jsoup.parse(form.html, regUrl) } catch (_: Exception) { null }
+                ?: return@withContext LoginResult.NetworkError
+            if (!form.finalUrl.contains("Register", ignoreCase = true)) {
+                return@withContext LoginResult.Ok(fetchDisplayName(), checkSiteSession())
+            }
+            val formEl = doc.select("form").firstOrNull {
+                it.selectFirst("#Input_Password") != null
+            }
+            val token = formEl?.selectFirst("input[name=__RequestVerificationToken]")
+                ?.attr("value").orEmpty()
+            if (token.isBlank()) return@withContext LoginResult.NetworkError
+            val res = Http.postForm(regUrl, mapOf(
+                "Input.Email" to email.trim(),
+                "Input.Password" to password,
+                "Input.ConfirmPassword" to password,
+                "Input.FistName" to firstName.trim(),
+                "Input.LastName" to lastName.trim(),
+                "__RequestVerificationToken" to token,
+            ), regUrl) ?: return@withContext LoginResult.NetworkError
+            if (res.finalUrl.contains("Register", ignoreCase = true) ||
+                res.finalUrl.contains("Login", ignoreCase = true)
+            ) {
+                val d2 = try { Jsoup.parse(res.body, regUrl) } catch (_: Exception) { null }
+                val err = d2?.select(".validation-summary-errors li, .text-danger li, span.field-validation-error")
+                    ?.map { it.text().trim() }?.filter { it.length > 1 }
+                    ?.distinct()?.joinToString("; ")?.take(250)
+                    ?.ifBlank { "Đăng ký thất bại, kiểm tra lại thông tin." }
+                    ?: "Đăng ký thất bại, kiểm tra lại thông tin."
+                // Đăng ký xong web thường bắt xác nhận email -> vẫn coi như xong form
+                if (res.body.contains("xác nhận", ignoreCase = true) ||
+                    res.body.contains("confirm", ignoreCase = true)
+                ) {
+                    return@withContext LoginResult.Ok("", false)
+                }
+                return@withContext LoginResult.Invalid(err)
+            }
+            try { syncSiteSession() } catch (_: Exception) { }
+            LoginResult.Ok(fetchDisplayName(), checkSiteSession())
+        } catch (_: Exception) { LoginResult.NetworkError }
+    }
+
+    /**
+     * Đồng bộ phiên site sau khi có phiên member: chạy handshake HTTP
+     * (iframe LoginFrom + trang chủ). Không JS nên có thể không đủ — hàm trả
+     * về đúng trạng thái để UI báo thật.
+     */
+    suspend fun syncSiteSession(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            try {
+                Http.get("https://member.bongdaplus.vn/Identity/Account/Login?ReturnUrl=%2FHome%2FLoginFromBongdaplus")
+            } catch (_: Exception) { }
+            try { Http.get("$BASE/") } catch (_: Exception) { }
+            checkSiteSession()
+        } catch (_: Exception) { false }
+    }
 
     /** Tên hiển thị từ trang Manage ("Xin chào <b>Tên</b>"). Trống nếu chưa login. */
     suspend fun fetchDisplayName(): String = withContext(Dispatchers.IO) {
