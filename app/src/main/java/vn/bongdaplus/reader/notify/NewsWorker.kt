@@ -110,8 +110,9 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
     }
 
     /**
-     * Thông báo bình luận mới: so sánh số bình luận thật (API getNewsEmotion)
-     * của các bài đã lưu với lần quét trước. Lần đầu chỉ lưu mốc, không báo.
+     * Thông báo bình luận mới CHI TIẾT: quét bài đã lưu + bài đã bình luận,
+     * so id bình luận thật (/binh-luan). Lần đầu chỉ lưu mốc, không báo.
+     * Nội dung báo gồm tên + trích đoạn comment, nhận diện comment của mình đã được duyệt.
      */
     private suspend fun checkComments(auth: AuthManager, cookies: Map<String, String>) {
         try {
@@ -119,22 +120,74 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
             if (!enabled) return
             NotifyHelper.ensureChannel(applicationContext)
             val saved = try { BookmarkStore(applicationContext).flow().first() } catch (_: Exception) { return }
-            if (saved.isEmpty()) return
+            val tracked = try { vn.bongdaplus.reader.data.CommentTrackStore(applicationContext).tracked() } catch (_: Exception) { emptyList<vn.bongdaplus.reader.data.Article>() }
+            val trackStore = vn.bongdaplus.reader.data.CommentTrackStore(applicationContext)
+            // Ưu tiên bài đã bình luận lên trước, sau đó tới bài đã lưu
+            val all = (tracked + saved).distinctBy { it.id }.take(7)
+            if (all.isEmpty()) return
             val counts = auth.commentCounts().toMutableMap()
             var changed = false
-            for (a in saved.take(5)) {
+            for (a in all) {
                 try {
                     val ref = BongDaPlusScraper.fetchObjectRef(a.url, cookies) ?: continue
-                    val emo = BongDaPlusScraper.fetchEmotion(ref.first, ref.second, cookies)
+                    val emo = try { BongDaPlusScraper.fetchEmotion(ref.first, ref.second, cookies) }
+                    catch (_: Exception) { vn.bongdaplus.reader.data.Emotion() }
+                    val list = try { BongDaPlusScraper.fetchComments(ref.first, ref.second, 1, cookies) }
+                    catch (_: Exception) { emptyList() }
+                    val ids = list.map { it.id }
+                    val seen = try { trackStore.seenIds(a.id) } catch (_: Exception) { emptySet<String>() }
+
+                    if (seen.isEmpty() && ids.isNotEmpty()) {
+                        // Lần đầu thấy bài này -> chỉ lưu mốc, không báo để tránh spam
+                        trackStore.saveSeenIds(a.id, ids, a)
+                        if (counts[a.id] != emo.comments) { counts[a.id] = emo.comments; changed = true }
+                        continue
+                    }
+                    if (ids.isNotEmpty() && seen.isNotEmpty()) {
+                        val fresh = list.filter { it.id !in seen }
+                        if (fresh.isNotEmpty()) {
+                            val myTexts = try { trackStore.myTexts(a.id) } catch (_: Exception) { emptyList() }
+                            val mine = fresh.firstOrNull { nc ->
+                                myTexts.any { mt ->
+                                    val m = mt.trim().take(30)
+                                    m.length >= 8 && (m in nc.text || nc.text.take(30) in mt)
+                                }
+                            }
+                            if (mine != null) {
+                                NotifyHelper.show(
+                                    applicationContext,
+                                    "✅ Bình luận của bạn đã được duyệt",
+                                    "${a.title}\n\"${mine.text.take(140)}\"",
+                                    a.url,
+                                    (a.id.hashCode() % 90000) + 10000
+                                )
+                            } else {
+                                val top = fresh.first()
+                                val more = if (fresh.size > 1) " (+${fresh.size - 1} nữa)" else ""
+                                NotifyHelper.show(
+                                    applicationContext,
+                                    "💬 ${a.title.take(50)} (+${fresh.size})",
+                                    "${top.name}: ${top.text.take(140)}$more",
+                                    a.url,
+                                    (a.id.hashCode() % 90000) + 10000
+                                )
+                            }
+                            trackStore.saveSeenIds(a.id, ids, a)
+                        }
+                    }
+                    // Fallback: không lấy được list chi tiết nhưng số đếm tăng (trang 2+)
                     val old = counts[a.id]
-                    if (old != null && emo.comments > old) {
+                    if ((ids.isEmpty() || seen.isEmpty()) && old != null && emo.comments > old) {
+                        val preview = list.firstOrNull()?.let { "${it.name}: ${it.text.take(120)}" } ?: a.title
                         NotifyHelper.show(
                             applicationContext,
                             "💬 Bình luận mới (+${emo.comments - old})",
-                            a.title, a.url,
+                            "${a.title}\n$preview",
+                            a.url,
                             (a.id.hashCode() % 90000) + 10000
                         )
                     }
+                    if (ids.isNotEmpty()) trackStore.saveSeenIds(a.id, ids, a)
                     if (counts[a.id] != emo.comments) { counts[a.id] = emo.comments; changed = true }
                 } catch (_: Exception) { }
             }

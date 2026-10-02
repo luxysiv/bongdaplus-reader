@@ -157,18 +157,25 @@ class DetailViewModel : ViewModel() {
         }
     }
 
-    fun sendComment(text: String) {
+    fun sendComment(text: String, article: Article? = null, trackStore: CommentTrackStore? = null) {
         val d = _detail.value ?: return
         viewModelScope.launch {
             _sending.value = true; _sendMsg.value = null
+            val clean = text.trim()
             val ok = try {
                 BongDaPlusScraper.postComment(
-                    d.objectId, d.objectType, text.trim(), cookiesOf(cookieProvider))
+                    d.objectId, d.objectType, clean, cookiesOf(cookieProvider))
             } catch (_: Exception) { false }
-            _sendMsg.value = if (ok) "Đã gửi! Bình luận chờ duyệt rồi sẽ hiện."
+            _sendMsg.value = if (ok) "Đã gửi! Bình luận chờ duyệt rồi sẽ hiện. Đã bật theo dõi — có bình luận mới sẽ báo chi tiết."
             else "Gửi thất bại — bạn cần đăng nhập tài khoản BongdaPlus."
             _sending.value = false
-            if (ok) loadComments()
+            if (ok) {
+                try {
+                    // Tự track bài đã bình luận để Worker báo chi tiết, kể cả chưa bấm Lưu
+                    trackStore?.track(article ?: d.article, clean)
+                } catch (_: Exception) { }
+                loadComments()
+            }
         }
     }
 }

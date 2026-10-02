@@ -55,10 +55,13 @@ fun DetailScreen(
     val logged by auth.loggedIn.collectAsState(initial = false)
     val fontScale by prefs.fontScale.collectAsState(initial = 1f)
     var draft by remember { mutableStateOf("") }
+    val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
 
     LaunchedEffect(article.url) {
         vm.cookieProvider = { auth.currentCookies() }
         vm.load(article)
+        // Mở bài nào thì track luôn để Worker có mốc so sánh, tránh báo ảo lần đầu
+        try { trackStore.track(article) } catch (_: Exception) { }
     }
 
     val cmtCount = detail?.emotion?.comments ?: 0
@@ -182,7 +185,15 @@ fun DetailScreen(
                                 } ?: Spacer(Modifier.weight(1f))
                                 Spacer(Modifier.width(8.dp))
                                 Button(
-                                    onClick = { scope.launch { vm.sendComment(draft); draft = "" } },
+                                    onClick = {
+                                        val txt = draft
+                                        scope.launch {
+                                            vm.sendComment(txt, article, trackStore)
+                                            // Tự lưu tin để Worker luôn quét, kể cả user quên bấm Lưu
+                                            try { if (!isSaved) bookmarks.toggle(article) } catch (_: Exception) { }
+                                        }
+                                        draft = ""
+                                    },
                                     enabled = !sending && draft.isNotBlank()
                                 ) { Text(if (sending) "Đang gửi…" else "Gửi") }
                             }
