@@ -34,6 +34,21 @@ object BongDaPlusScraper {
         return url.hashCode().toString()
     }
 
+    /** Tách YouTube videoId từ URL embed/watch (youtube.com/embed/ID, youtu.be/ID, watch?v=ID) */
+    fun extractYoutubeId(src: String): String? {
+        if (src.isBlank()) return null
+        val patterns = listOf(
+            Regex("youtube\\.com/embed/([A-Za-z0-9_-]{6,})"),
+            Regex("youtube\\.com/watch\\?v=([A-Za-z0-9_-]{6,})"),
+            Regex("youtu\\.be/([A-Za-z0-9_-]{6,})")
+        )
+        for (p in patterns) {
+            val m = p.find(src)
+            if (m != null) return m.groupValues[1]
+        }
+        return null
+    }
+
     private fun absImg(src: String?): String? {
         if (src.isNullOrBlank()) return null
         var s = src.trim()
@@ -123,6 +138,12 @@ object BongDaPlusScraper {
                     if (t.length >= 2) blocks += ContentBlock.Heading(t)
                 }
                 "img" -> imgUrl(el)?.let { blocks += ContentBlock.Image(it, el.attr("alt").ifBlank { null }) }
+                "iframe" -> {
+                    // video nhúng trong thân bài (thường là YouTube)
+                    val src = el.attr("abs:src").ifBlank { el.attr("src") }.trim()
+                    val vid = extractYoutubeId(src)
+                    if (vid != null) blocks += ContentBlock.Video(src, vid, null)
+                }
                 "blockquote" -> {
                     val t = el.text().trim()
                     if (t.length >= 2) blocks += ContentBlock.Quote(t)
@@ -153,14 +174,37 @@ object BongDaPlusScraper {
             val doc = Jsoup.connect(url).userAgent(UA).timeout(20000).cookies(cookies).get()
             val title = doc.selectFirst("h1")?.text()?.trim()
                 ?: doc.selectFirst("meta[property=og:title]")?.attr("content") ?: "Bài viết"
-            val ogImg = doc.selectFirst("meta[property=og:image]")?.attr("content")
+            var ogImg = doc.selectFirst("meta[property=og:image]")?.attr("content")
+            // Trang video (/video/...) không có div.content: player là
+            // div.play-box > iframe.play-frame (YouTube embed), mô tả ở div.clip-info p.desc
+            val videoSrc = doc.selectFirst("div.play-box iframe[src], iframe.play-frame[src]")
+                ?.attr("src")?.trim().orEmpty()
+            val ytId = extractYoutubeId(videoSrc)
+            val clipDesc = doc.selectFirst("div.clip-info p.desc")?.text()?.trim().orEmpty()
             val bodyEl = doc.selectFirst("#postContent.content")
                 ?: doc.selectFirst("div.content")
+                ?: doc.selectFirst("div.clip-info")
                 ?: doc.selectFirst("div.article-content")
+                ?: doc.selectFirst("section.media-box")
                 ?: doc.selectFirst("article")
                 ?: doc.body()
             bodyEl.select("script, style").remove()
-            val blocks = if (bodyEl.tagName() == "body") emptyList() else parseBlocks(bodyEl)
+            val blocks = when {
+                ytId != null -> buildList {
+                    add(ContentBlock.Video(videoSrc, ytId, title))
+                    if (clipDesc.isNotBlank()) add(ContentBlock.Paragraph(clipDesc))
+                    // các đoạn chữ còn lại trong clip-info (tags đã nằm ngoài nên an toàn)
+                    bodyEl.select("p").forEach {
+                        val t = it.text().trim()
+                        if (t.isNotBlank() && t != clipDesc && t.length > 2) add(ContentBlock.Paragraph(t))
+                    }
+                }.take(50)
+                bodyEl.tagName() == "body" -> emptyList()
+                else -> parseBlocks(bodyEl)
+            }
+            if (ytId != null && (ogImg.isNullOrBlank() || ogImg.contains("logo"))) {
+                ogImg = "https://i.ytimg.com/vi/$ytId/hqdefault.jpg"
+            }
             // tác giả + giờ từ JSON-LD NewsArticle (chuẩn nhất)
             // Thực tế file .mht thật cho thấy site không còn render ld+json,
             // chỉ có <meta name=author> chung + <time datetime>.

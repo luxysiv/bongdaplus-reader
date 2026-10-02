@@ -264,6 +264,7 @@ fun DetailScreen(
 
 @Composable
 private fun BlockView(b: ContentBlock, fontScale: Float) {
+    val ctx = LocalContext.current
     when (b) {
         is ContentBlock.Paragraph -> Text(
             b.text, modifier = Modifier.padding(16.dp, 6.dp),
@@ -283,6 +284,40 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
                 Text(b.caption!!, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.padding(4.dp, 6.dp, 4.dp, 0.dp))
+            }
+        }
+        is ContentBlock.Video -> {
+            val thumb = if (!b.videoId.isNullOrBlank()) "https://i.ytimg.com/vi/${b.videoId}/hqdefault.jpg" else null
+            val watchUrl = if (!b.videoId.isNullOrBlank()) "https://www.youtube.com/watch?v=${b.videoId}" else b.embedUrl
+            Column(Modifier.padding(8.dp, 8.dp)) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable {
+                            try { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(watchUrl))) }
+                            catch (_: Exception) { }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (thumb != null) {
+                        AsyncImage(thumb, "▶ Phát video",
+                            modifier = Modifier.fillMaxWidth(),
+                            contentScale = ContentScale.FillWidth)
+                    } else {
+                        Spacer(Modifier.fillMaxWidth().height(180.dp))
+                    }
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+                    ) {
+                        Text("▶", fontSize = 28.sp, color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.padding(14.dp, 8.dp))
+                    }
+                }
+                Text("🎬 Bấm để phát video",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(4.dp, 6.dp, 0.dp, 0.dp))
             }
         }
         is ContentBlock.Quote -> Row(Modifier.padding(16.dp, 8.dp)) {

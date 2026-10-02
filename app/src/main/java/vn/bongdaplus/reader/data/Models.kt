@@ -28,6 +28,7 @@ sealed class ContentBlock {
     data class Paragraph(val text: String) : ContentBlock()
     data class Heading(val text: String) : ContentBlock()
     data class Image(val url: String, val caption: String? = null) : ContentBlock()
+    data class Video(val embedUrl: String, val videoId: String? = null, val caption: String? = null) : ContentBlock()
     data class Quote(val text: String) : ContentBlock()
     data class Bullet(val text: String) : ContentBlock()
 }
