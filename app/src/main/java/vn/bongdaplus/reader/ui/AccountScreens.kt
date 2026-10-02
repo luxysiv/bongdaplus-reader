@@ -372,18 +372,80 @@ private fun AuthWebViewScreen(
     // đều đọc cùng 1 kho), nhưng phiên member và phiên site là 2 domain khác nhau:
     // login member xong PHẢI mở bongdaplus.vn một lần để site handshake SSO
     // (iframe LoginFromBongdaplus) rồi mới có cookie gửi bình luận được.
+    // Không tin cookie mù mờ nữa: đọc thẳng id user trong DOM (input#txtUserid,
+    // form Logout, chữ "Xin chào ...") rồi mới coi là đã đăng nhập.
     var ssoTried by remember(url) { mutableStateOf(false) }
     var finished by remember(url) { mutableStateOf(false) }
+    var webView by remember(url) { mutableStateOf<WebView?>(null) }
+
+    fun probeLogin(view: WebView, pageUrl: String) {
+        // uid|fullname|hello|hasLogout — input#txtUserid có giá trị khi đã login
+        // (cả trang member lẫn trang bongdaplus.vn đều render input này)
+        view.evaluateJavascript(
+            "(function(){try{" +
+                "var u=document.getElementById('txtUserid');u=u&&u.value||'';" +
+                "var n=document.getElementById('txtFullname');n=n&&n.value||'';" +
+                "var lo=!!document.querySelector('form[action*=\"Logout\"],a[href*=\"Logout\"]');" +
+                "var hello='';try{var m=(document.body?document.body.innerText:'').match(/Xin chào\\s*([^\\n]{1,40})/);if(m)hello=m[1].trim();}catch(e){}" +
+                "return u+'|||'+n+'|||'+hello+'|||'+(lo?'1':'0');" +
+                "}catch(e){return '|||'.concat('|||').concat('|||0');}})()"
+        ) { v ->
+            if (finished) return@evaluateJavascript
+            auth.flushCookies()
+            val raw = v?.trim().orEmpty().removeSurrounding("\"")
+                .replace("\\\"", "\"").replace("\\\\", "\\")
+            val p = raw.split("|||")
+            val uid = p.getOrNull(0).orEmpty().trim()
+            val full = p.getOrNull(1).orEmpty().trim()
+            val hello = p.getOrNull(2).orEmpty().trim()
+            val hasLogout = p.getOrNull(3) == "1"
+            val nameGuess = full.ifBlank { hello }
+            val domLogged = uid.isNotBlank() || hasLogout
+            val cookieLogged = auth.hasMemberCookie() || auth.hasSiteCookie()
+            val isMemberPage = pageUrl.contains("member.bongdaplus.vn")
+            // Phiên site (uid trên trang bongdaplus.vn / cookie site) mới gửi bình luận được.
+            // Nếu chỉ có phiên member, thử SSO 1 lần; vẫn không có thì cứ lưu login
+            // member (Jsoup gửi kèm cookie member, backend chung key có thể vẫn nhận).
+            val siteOk = (uid.isNotBlank() || hasLogout || auth.hasSiteCookie()) && !isMemberPage
+            when {
+                siteOk -> {
+                    finished = true
+                    status = "✅ Thành công" +
+                        (if (nameGuess.isNotBlank()) " ($nameGuess)" else "") + "! Đang lưu…"
+                    scope.launch { auth.markLoggedIn(nameGuess); onDone() }
+                }
+                (domLogged || cookieLogged) && isMemberPage && !ssoTried -> {
+                    ssoTried = true
+                    status = "Đã đăng nhập" +
+                        (if (nameGuess.isNotBlank()) " ($nameGuess)" else "") +
+                        ", đang đồng bộ sang BongdaPlus…"
+                    view.loadUrl(AuthManager.HOME)
+                }
+                domLogged || cookieLogged -> {
+                    finished = true
+                    status = "✅ Thành công" +
+                        (if (nameGuess.isNotBlank()) " ($nameGuess)" else "") + "! Đang lưu…"
+                    scope.launch { auth.markLoggedIn(nameGuess); onDone() }
+                }
+                else -> status = "Nhập Email + Mật khẩu (hoặc Google/Apple) để tiếp tục…"
+            }
+        }
+    }
+
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(title) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } }
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } },
+            actions = {
+                IconButton(onClick = { webView?.reload() }) { Icon(Icons.Default.Refresh, "Tải lại") }
+            }
         )
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             Text(status, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
             AndroidView(factory = { c ->
                 WebView(c).apply {
+                    webView = this
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     settings.javaScriptEnabled = true
@@ -396,21 +458,8 @@ private fun AuthWebViewScreen(
                         override fun onPageFinished(view: WebView, url: String) {
                             auth.flushCookies()
                             if (finished) return
-                            val hasMember = auth.hasMemberCookie()
-                            val hasSite = auth.hasSiteCookie()
-                            if (hasMember && hasSite) {
-                                finished = true
-                                status = "✅ Thành công! Đang lưu…"
-                                scope.launch { auth.markLoggedIn(""); onDone() }
-                            } else if (hasMember && !hasSite && !ssoTried) {
-                                ssoTried = true
-                                status = "Đã đăng nhập member, đang đồng bộ sang BongdaPlus…"
-                                view.loadUrl(AuthManager.HOME)
-                            } else if (!hasMember) {
-                                status = "Nhập Email + Mật khẩu (hoặc Google/Apple) để tiếp tục…"
-                            } else {
-                                status = "Đang đồng bộ phiên, chờ chút…"
-                            }
+                            // Đợi JS render xong rồi mới đọc DOM id/token
+                            view.postDelayed({ if (!finished) probeLogin(view, url) }, 800)
                         }
                     }
                     loadUrl(url)
