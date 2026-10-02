@@ -480,7 +480,7 @@ object BongDaPlusScraper {
                 } catch (_: Exception) { continue }
                 for (i in 0 until arr.length()) {
                     val o = arr.optJSONObject(i) ?: continue
-                    val html = o.optString("contents").trim()
+                    val html = (o.optString("contents") ?: "").trim()
                     if (html.isBlank()) continue
                     // contents là HTML: parse lấy text + actor + giờ
                     val frag = try { Jsoup.parseBodyFragment(html) } catch (_: Exception) { continue }
@@ -495,8 +495,8 @@ object BongDaPlusScraper {
                     if (href.isBlank()) continue
                     if (href.startsWith("/")) href = href.substring(1)
                     val url = absUrl(href)
-                    val time = frag.selectFirst("span.info")?.text()?.trim()
-                        .ifBlank { o.optString("postedDate").trim() }.orEmpty()
+                    val time = (frag.selectFirst("span.info")?.text()?.trim()
+                        .ifBlank { (o.optString("postedDate") ?: "").trim() }).orEmpty()
                     val action = when {
                         full.contains("không thích", true) -> "không thích"
                         full.contains("thích", true) -> "thích"
