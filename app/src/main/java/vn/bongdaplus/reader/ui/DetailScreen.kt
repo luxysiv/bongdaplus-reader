@@ -71,6 +71,7 @@ fun DetailScreen(
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<Comment?>(null) }
     val myVotes by vm.myVotes.collectAsState()
+    val myEmotion by vm.myEmotion.collectAsState()
     val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
 
     LaunchedEffect(article.url) {
@@ -141,21 +142,31 @@ fun DetailScreen(
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline
                         )
                         Spacer(Modifier.height(8.dp))
-                        // Cảm xúc thật từ server — bấm để Thích/Tim/Wow (cần đăng nhập)
+                        // Cảm xúc thật từ server — bấm để Thích/Tim/Wow (cần đăng nhập).
+                        // Cảm xúc đang chọn được tô đậm; bấm lại = gỡ (giống web).
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("👍 ${d.emotion.liked}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (logged) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                fontWeight = if (myEmotion == 1) FontWeight.Bold else FontWeight.Normal,
+                                color = if (myEmotion == 1) MaterialTheme.colorScheme.primary
+                                else if (logged) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.clickable { if (logged) vm.reactArticle(1) else onLogin() })
                             Spacer(Modifier.width(12.dp))
                             Text("❤️ ${d.emotion.heart}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (logged) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                fontWeight = if (myEmotion == 2) FontWeight.Bold else FontWeight.Normal,
+                                color = if (myEmotion == 2) MaterialTheme.colorScheme.primary
+                                else if (logged) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.clickable { if (logged) vm.reactArticle(2) else onLogin() })
                             Spacer(Modifier.width(12.dp))
                             Text("😮 ${d.emotion.wow}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (logged) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                fontWeight = if (myEmotion == 4) FontWeight.Bold else FontWeight.Normal,
+                                color = if (myEmotion == 4) MaterialTheme.colorScheme.primary
+                                else if (logged) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.clickable { if (logged) vm.reactArticle(4) else onLogin() })
                             Spacer(Modifier.width(12.dp))
                             Text("💬 $cmtCount bình luận",

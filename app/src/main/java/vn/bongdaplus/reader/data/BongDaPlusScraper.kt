@@ -462,20 +462,19 @@ object BongDaPlusScraper {
 
     /**
      * Thích / Không thích 1 bình luận (OkHttp + URL cuối).
-     * Chỉ báo thành công khi đọc lại thấy số đếm ĐỔI so với trước khi bấm
-     * (thử lại 1 lần sau 2 giây) — hết chuyện app +1 mà web không nhận.
+     * Web (bongdaplus.js) tin HTTP 200 và KHÔNG đọc lại số đếm — vì mảnh
+     * /binh-luan bị server cache vài chục giây, đọc lại số đếm để "xác minh"
+     * luôn sai ở lần bấm thứ 2 (hoàn tác) dù server đã nhận.
+     * App xác minh bằng TRẠNG THÁI vote của member
+     * (GET /GetCommentEmotion + chống cache ?t=...) thay vì số đếm.
      */
     suspend fun setCommentEmotion(objectId: String, commentId: String, like: Boolean,
-                                  cookies: Map<String, String>,
-                                  pageUrl: String = "$BASE/",
-                                  objectType: String = "1"): Boolean =
+                                   cookies: Map<String, String>,
+                                   pageUrl: String = "$BASE/",
+                                   objectType: String = "1",
+                                   expectVoted: Boolean = true): Boolean =
         withContext(Dispatchers.IO) {
             val type = if (like) "1" else "7"
-            // Mốc trước khi bấm (để so sánh; không đọc được thì tin HTTP 200)
-            val before = try {
-                fetchComments(objectId, objectType, 1, cookies)
-                    .firstOrNull { it.id == commentId }
-            } catch (_: Exception) { null }
             // 1) OkHttp POST đúng 1 lần (gửi lại sẽ bật/tắt liên tục)
             val postedOk = try {
                 val r = Http.postForm("$BASE/setCommentEmotion/$objectId/$commentId/$type",
@@ -488,17 +487,16 @@ object BongDaPlusScraper {
                     "$BASE/setCommentEmotion/$objectId/$commentId/$type", cookies, pageUrl)
             }
             if (!postedOk) return@withContext false
-            if (before == null) return@withContext true // không có mốc: tin HTTP 200
-            // 2) Xác minh số đếm đổi (thử lại 1 lần sau 2 giây)
+            // 2) Xác minh trạng thái vote của chính member (thử lại 1 lần sau 2 giây)
+            val want = if (expectVoted) type.toInt() else -1
             repeat(2) { attempt ->
                 if (attempt == 1) try { kotlinx.coroutines.delay(2000) } catch (_: Exception) { }
-                val after = try {
-                    fetchComments(objectId, objectType, 1, cookies)
-                        .firstOrNull { it.id == commentId }
-                } catch (_: Exception) { null }
-                if (after != null &&
-                    (after.likes != before.likes || after.dislikes != before.dislikes)
-                ) return@withContext true
+                val state = try { getMyCommentVotes(objectId, objectType, cookies) }
+                catch (_: Exception) { null }
+                if (state == null) return@withContext true // không đọc được: tin HTTP 200 như web
+                val got = state[commentId] ?: 0
+                if (expectVoted && got == want) return@withContext true
+                if (!expectVoted && got != type.toInt()) return@withContext true
             }
             false
         }
@@ -519,16 +517,16 @@ object BongDaPlusScraper {
     }
 
     /**
-     * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow.
-     * Chỉ báo thành công khi đọc lại thấy số đếm ĐỔI (thử lại 1 lần sau 2 giây).
+     * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow. Web toggle: bấm lại cảm xúc
+     * đang chọn = gỡ. Xác minh bằng logNewsEmotion.emotionType của member
+     * (expectEmotion: kỳ vọng sau bấm; 0 = kỳ vọng đã gỡ), không dùng số đếm
+     * vì tổng cảm xúc cũng bị cache như /binh-luan.
      */
     suspend fun setNewsEmotion(objectId: String, objectType: String, emotionType: Int,
-                                cookies: Map<String, String>,
-                                pageUrl: String = "$BASE/"): Boolean =
+                                 cookies: Map<String, String>,
+                                 pageUrl: String = "$BASE/",
+                                 expectEmotion: Int = emotionType): Boolean =
         withContext(Dispatchers.IO) {
-            fun sig(e: Emotion) = e.liked + e.heart + e.wow
-            val before = try { sig(fetchEmotion(objectId, objectType, cookies)) }
-            catch (_: Exception) { -1 }
             // 1) OkHttp POST đúng 1 lần
             val postedOk = try {
                 val r = Http.postForm("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType",
@@ -542,15 +540,30 @@ object BongDaPlusScraper {
                     "$BASE/setNewsEmotion/$objectId/$objectType/$emotionType", cookies, pageUrl)
             }
             if (!postedOk) return@withContext false
-            if (before < 0) return@withContext true // không có mốc: tin HTTP 200
-            // 2) Xác minh tổng cảm xúc đổi
+            // 2) Xác minh trạng thái của member (thử lại 1 lần sau 2 giây)
             repeat(2) { attempt ->
                 if (attempt == 1) try { kotlinx.coroutines.delay(2000) } catch (_: Exception) { }
-                val after = try { sig(fetchEmotion(objectId, objectType, cookies)) }
-                catch (_: Exception) { -1 }
-                if (after >= 0 && after != before) return@withContext true
+                val got = try { fetchMyNewsEmotion(objectId, objectType, cookies) }
+                catch (_: Exception) { null }
+                if (got == null) return@withContext true // không đọc được: tin HTTP 200 như web
+                if (got == expectEmotion) return@withContext true
             }
             false
+        }
+
+    /** Cảm xúc bài viết của chính member (0 = chưa chọn). */
+    suspend fun fetchMyNewsEmotion(objectId: String, objectType: String,
+                                   cookies: Map<String, String>): Int? =
+        withContext(Dispatchers.IO) {
+            if (objectId.isBlank() || cookies.isEmpty()) return@withContext null
+            try {
+                val bust = System.currentTimeMillis()
+                val body = Http.get("$BASE/getNewsEmotion/$objectId/$objectType?t=$bust")?.html
+                    ?: Jsoup.connect("$BASE/getNewsEmotion/$objectId/$objectType")
+                        .userAgent(UA).timeout(15000).cookies(cookies)
+                        .ignoreContentType(true).get().body().text()
+                JSONObject(body).optJSONObject("logNewsEmotion")?.optInt("emotionType", 0)
+            } catch (_: Exception) { null }
         }
 
     /**
@@ -563,7 +576,8 @@ object BongDaPlusScraper {
         withContext(Dispatchers.IO) {
             if (objectId.isBlank() || cookies.isEmpty()) return@withContext emptyMap()
             try {
-                val body = Http.get("$BASE/GetCommentEmotion/$objectId/$objectType")?.html
+                val bust = System.currentTimeMillis()
+                val body = Http.get("$BASE/GetCommentEmotion/$objectId/$objectType?t=$bust")?.html
                     ?: Jsoup.connect("$BASE/GetCommentEmotion/$objectId/$objectType")
                         .userAgent(UA).timeout(15000).cookies(cookies)
                         .ignoreContentType(true).get().body().text()

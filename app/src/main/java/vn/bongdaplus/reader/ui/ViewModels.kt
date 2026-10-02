@@ -126,6 +126,9 @@ class DetailViewModel : ViewModel() {
     // vote của chính member: commentId -> emotionType (1=đã Thích)
     private val _myVotes = MutableStateFlow<Map<String, Int>>(emptyMap())
     val myVotes: StateFlow<Map<String, Int>> = _myVotes
+    // Cảm xúc bài viết của chính member (0 = chưa chọn) — để toggle như web
+    private val _myEmotion = MutableStateFlow(0)
+    val myEmotion: StateFlow<Int> = _myEmotion
 
     fun load(article: Article) {
         viewModelScope.launch {
@@ -158,6 +161,9 @@ class DetailViewModel : ViewModel() {
                     d.objectId, d.objectType, 1, ck)
                 // trạng thái vote của member (để tô sáng 👍👎 đã bấm)
                 try { _myVotes.value = BongDaPlusScraper.getMyCommentVotes(d.objectId, d.objectType, ck) }
+                catch (_: Exception) { }
+                try { _myEmotion.value =
+                    BongDaPlusScraper.fetchMyNewsEmotion(d.objectId, d.objectType, ck) ?: 0 }
                 catch (_: Exception) { }
             } catch (_: Exception) { }
             _loadingComments.value = false
@@ -195,21 +201,24 @@ class DetailViewModel : ViewModel() {
             val ok = try {
                 BongDaPlusScraper.setCommentEmotion(
                     d.objectId, commentId, like, cookiesOf(cookieProvider),
-                    d.article.url, d.objectType)
+                    d.article.url, d.objectType, expectVoted = !undo)
             } catch (_: Exception) { false }
             loadComments()
             if (!ok) _sendMsg.value = "👍/👎 thất bại — server chưa nhận, thử lại sau."
         }
     }
 
-    /** Cảm xúc bài viết: chỉ hiện số mới sau khi server xác nhận. */
+    /** Cảm xúc bài viết kiểu web: bấm lại cảm xúc đang chọn = gỡ. */
     fun reactArticle(emotionType: Int) {
         val d = _detail.value ?: return
+        val undo = _myEmotion.value == emotionType
+        _myEmotion.value = if (undo) 0 else emotionType
         viewModelScope.launch {
             try {
                 val ok = BongDaPlusScraper.setNewsEmotion(
                     d.objectId, d.objectType, emotionType,
-                    cookiesOf(cookieProvider), d.article.url)
+                    cookiesOf(cookieProvider), d.article.url,
+                    expectEmotion = if (undo) 0 else emotionType)
                 if (ok) {
                     val e = try {
                         BongDaPlusScraper.fetchEmotion(
@@ -219,6 +228,7 @@ class DetailViewModel : ViewModel() {
                 } else {
                     _sendMsg.value = "Cảm xúc thất bại — server chưa nhận, thử lại sau."
                 }
+                loadComments() // đồng bộ lại trạng thái member
             } catch (_: Exception) { }
         }
     }
