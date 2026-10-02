@@ -106,7 +106,7 @@ class SearchViewModel : ViewModel() {
     }
 }
 
-/** Chi tiết + tin liên quan */
+/** Chi tiết + tin liên quan + bình luận thật */
 class DetailViewModel : ViewModel() {
     var cookieProvider: () -> Map<String, String> = { emptyMap() }
     private val _detail = MutableStateFlow<ArticleDetail?>(null)
@@ -115,49 +115,61 @@ class DetailViewModel : ViewModel() {
     val related: StateFlow<List<Article>> = _related
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
+    private val _comments = MutableStateFlow<List<Comment>>(emptyList())
+    val comments: StateFlow<List<Comment>> = _comments
+    private val _loadingComments = MutableStateFlow(false)
+    val loadingComments: StateFlow<Boolean> = _loadingComments
+    private val _sending = MutableStateFlow(false)
+    val sending: StateFlow<Boolean> = _sending
+    private val _sendMsg = MutableStateFlow<String?>(null)
+    val sendMsg: StateFlow<String?> = _sendMsg
 
     fun load(article: Article) {
         viewModelScope.launch {
             _loading.value = true; _detail.value = null; _related.value = emptyList()
+            _comments.value = emptyList(); _sendMsg.value = null
             try {
                 val ck = cookiesOf(cookieProvider)
-                _detail.value = BongDaPlusScraper.fetchDetail(article.url, ck)
-                val slug = article.category
+                val det = BongDaPlusScraper.fetchDetail(article.url, ck)
+                _detail.value = det
+                val slug = det.article.category ?: article.category
                 val pool = try {
                     if (slug != null && slug != "tin-moi") BongDaPlusScraper.fetchCategory(slug, ck)
                     else BongDaPlusScraper.fetchHome(ck)
                 } catch (_: Exception) { emptyList() }
                 _related.value = pool.filter { it.id != article.id }.take(6)
+                loadComments()
             } catch (_: Exception) { }
             _loading.value = false
         }
     }
-}
 
-/** Dựng HTML đọc: hero + tiêu đề + meta + body + tin liên quan */
-fun buildArticleHtml(d: ArticleDetail, related: List<Article>): String {
-    val rel = if (related.isEmpty()) "" else
-        "<h3>Tin liên quan</h3><ul>" + related.joinToString("") {
-            "<li><a href=\"${it.url}\">${it.title}</a></li>"
-        } + "</ul>"
-    return """<html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<meta charset="utf-8"/>
-<style>
-body{font-family:sans-serif;font-size:17px;line-height:1.65;color:#222;margin:0;padding:14px}
-h1{font-size:22px;line-height:1.35;margin:8px 0}
-.meta{color:#888;font-size:13px;margin-bottom:8px}
-.hero{width:100%;border-radius:10px;margin:8px 0}
-img{max-width:100%;height:auto;border-radius:8px}
-a{color:#1B7A43;text-decoration:none}
-h3{font-size:17px;border-left:4px solid #1B7A43;padding-left:8px}
-li{margin:6px 0}
-.src{color:#888;font-size:13px;margin-top:16px;border-top:1px solid #eee;padding-top:10px}
-</style></head><body>
-<h1>${d.article.title}</h1>
-<div class="meta">${d.author ?: "BongdaPlus"} • ${d.publishedAt ?: ""}</div>
-${if (!d.article.imageUrl.isNullOrBlank()) "<img class=\"hero\" src=\"${d.article.imageUrl}\"/>" else ""}
-${d.bodyHtml.ifBlank { "<p>${d.bodyText}</p>" }}
-$rel
-<div class="src">Nguồn: bongdaplus.vn — <a href="${d.article.url}">Xem bài gốc</a></div>
-</body></html>"""
+    fun loadComments() {
+        val d = _detail.value ?: return
+        if (d.objectId.isBlank()) return
+        viewModelScope.launch {
+            _loadingComments.value = true
+            try {
+                _comments.value = BongDaPlusScraper.fetchComments(
+                    d.objectId, d.objectType, 1, cookiesOf(cookieProvider))
+            } catch (_: Exception) { }
+            _loadingComments.value = false
+        }
+    }
+
+    fun sendComment(text: String) {
+        val d = _detail.value ?: return
+        viewModelScope.launch {
+            _sending.value = true; _sendMsg.value = null
+            val ok = try {
+                BongDaPlusScraper.postComment(
+                    d.objectId, d.objectType, text.trim(), cookiesOf(cookieProvider))
+            } catch (_: Exception) { false }
+            _sendMsg.value = if (ok) "Đã gửi! Bình luận chờ duyệt rồi sẽ hiện."
+            else "Gửi thất bại — bạn cần đăng nhập tài khoản BongdaPlus."
+            _sending.value = false
+            if (ok) loadComments()
+        }
+    }
 }
+/* (Chi tiết render native 100% — không dùng WebView.) */

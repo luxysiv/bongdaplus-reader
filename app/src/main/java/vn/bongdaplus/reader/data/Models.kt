@@ -16,7 +16,38 @@ data class ArticleDetail(
     val author: String? = null,
     val publishedAt: String? = null,
     val bodyHtml: String = "",
-    val bodyText: String = ""
+    val bodyText: String = "",
+    val blocks: List<ContentBlock> = emptyList(),
+    val objectId: String = "",
+    val objectType: String = "0",
+    val emotion: Emotion = Emotion(),
+)
+
+/** Khối nội dung render native (thay WebView thô) */
+sealed class ContentBlock {
+    data class Paragraph(val text: String) : ContentBlock()
+    data class Heading(val text: String) : ContentBlock()
+    data class Image(val url: String, val caption: String? = null) : ContentBlock()
+    data class Quote(val text: String) : ContentBlock()
+    data class Bullet(val text: String) : ContentBlock()
+}
+
+/** Cảm xúc + số bình luận từ /getNewsEmotion */
+data class Emotion(
+    val liked: Int = 0,
+    val heart: Int = 0,
+    val wow: Int = 0,
+    val comments: Int = 0,
+)
+
+/** Bình luận thật từ /binh-luan */
+data class Comment(
+    val id: String,
+    val name: String,
+    val time: String,
+    val text: String,
+    val likes: Int = 0,
+    val dislikes: Int = 0,
 )
 
 /** Danh mục (slug lấy từ menu thật của bongdaplus.vn) */

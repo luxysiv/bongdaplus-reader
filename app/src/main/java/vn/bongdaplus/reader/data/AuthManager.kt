@@ -22,7 +22,10 @@ class AuthManager(private val ctx: Context) {
         val KEY_FOLLOW = stringSetPreferencesKey("follow_slugs")
         val KEY_LAST_IDS = stringPreferencesKey("last_seen_ids")
         val KEY_NOTIFY = booleanPreferencesKey("notify_enabled")
+        val KEY_NOTIFY_COMMENTS = booleanPreferencesKey("notify_comments")
+        val KEY_CMT_COUNTS = stringPreferencesKey("comment_counts_json")
         const val LOGIN_URL = "https://member.bongdaplus.vn/Identity/Account/Login?returnUrl=%2F"
+        const val REGISTER_URL = "https://member.bongdaplus.vn/Identity/Account/Register?returnUrl=%2F"
         const val HOME = "https://bongdaplus.vn/"
     }
 
@@ -32,8 +35,10 @@ class AuthManager(private val ctx: Context) {
         it[KEY_FOLLOW] ?: setOf("tin-moi", "bong-da-viet-nam", "ngoai-hang-anh")
     }
     val notifyEnabled: Flow<Boolean> = ctx.appPrefs.data.map { it[KEY_NOTIFY] ?: true }
+    val notifyComments: Flow<Boolean> = ctx.appPrefs.data.map { it[KEY_NOTIFY_COMMENTS] ?: true }
 
     suspend fun setNotify(v: Boolean) { ctx.appPrefs.edit { it[KEY_NOTIFY] = v } }
+    suspend fun setNotifyComments(v: Boolean) { ctx.appPrefs.edit { it[KEY_NOTIFY_COMMENTS] = v } }
     suspend fun setFollow(slugs: Set<String>) { ctx.appPrefs.edit { it[KEY_FOLLOW] = slugs } }
 
     /** Gọi sau khi WebView báo login thành công */
@@ -59,6 +64,20 @@ class AuthManager(private val ctx: Context) {
     }
     suspend fun saveLastSeen(ids: Set<String>) {
         ctx.appPrefs.edit { it[KEY_LAST_IDS] = ids.take(30).joinToString(",") }
+    }
+
+    /** Đếm bình luận đã thấy: articleId -> count (JSON) */
+    suspend fun commentCounts(): Map<String, Int> {
+        val raw = ctx.appPrefs.data.map { it[KEY_CMT_COUNTS] ?: "{}" }.first()
+        return try {
+            val o = org.json.JSONObject(raw)
+            o.keys().asSequence().associateWith { o.optInt(it) }
+        } catch (_: Exception) { emptyMap() }
+    }
+    suspend fun saveCommentCounts(m: Map<String, Int>) {
+        val o = org.json.JSONObject()
+        m.entries.take(60).forEach { o.put(it.key, it.value) }
+        ctx.appPrefs.edit { it[KEY_CMT_COUNTS] = o.toString() }
     }
 
     /** Cookie hiện tại để gắn vào Jsoup (đọc Premium) */

@@ -32,12 +32,14 @@ fun AccountScreen(
     auth: AuthManager,
     prefs: UiPrefs,
     onLogin: () -> Unit,
+    onRegister: () -> Unit,
     onSaved: () -> Unit,
 ) {
     val logged by auth.loggedIn.collectAsState(initial = false)
     val email by auth.email.collectAsState(initial = "")
     val follows by auth.followSlugs.collectAsState(initial = emptySet())
     val notify by auth.notifyEnabled.collectAsState(initial = true)
+    val notifyCmt by auth.notifyComments.collectAsState(initial = true)
     val theme by prefs.themeMode.collectAsState(initial = "system")
     val scope = rememberCoroutineScope()
 
@@ -81,7 +83,10 @@ fun AccountScreen(
                         if (logged) {
                             TextButton(onClick = { scope.launch { auth.logout() } }) { Text("Thoát") }
                         } else {
-                            Button(onClick = onLogin) { Text("Đăng nhập") }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Button(onClick = onLogin) { Text("Đăng nhập") }
+                                TextButton(onClick = onRegister) { Text("Tạo tài khoản") }
+                            }
                         }
                     }
                 }
@@ -95,7 +100,7 @@ fun AccountScreen(
                 )
                 HorizontalDivider()
             }
-            // Thông báo
+            // Thông báo tin mới
             item {
                 ListItem(
                     headlineContent = { Text("Nhận thông báo tin mới") },
@@ -103,6 +108,18 @@ fun AccountScreen(
                     leadingContent = { Icon(Icons.Default.Notifications, null) },
                     trailingContent = {
                         Switch(checked = notify, onCheckedChange = { scope.launch { auth.setNotify(it) } })
+                    }
+                )
+                HorizontalDivider()
+            }
+            // Thông báo bình luận
+            item {
+                ListItem(
+                    headlineContent = { Text("Báo bình luận mới") },
+                    supportingContent = { Text("Khi bài đã lưu có thêm bình luận trên BongdaPlus") },
+                    leadingContent = { Icon(Icons.Default.ChatBubble, null) },
+                    trailingContent = {
+                        Switch(checked = notifyCmt, onCheckedChange = { scope.launch { auth.setNotifyComments(it) } })
                     }
                 )
                 HorizontalDivider()
@@ -163,17 +180,40 @@ fun AccountScreen(
     }
 }
 
-// ---------- Đăng nhập qua WebView (tài khoản thật) ----------
+// ---------- Đăng nhập / Đăng ký qua WebView (tài khoản thật) ----------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LoginScreen(auth: AuthManager, onBack: () -> Unit, onDone: () -> Unit) {
+    AuthWebViewScreen(
+        url = AuthManager.LOGIN_URL, title = "Đăng nhập",
+        auth = auth, onBack = onBack, onDone = onDone
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun RegisterScreen(auth: AuthManager, onBack: () -> Unit, onDone: () -> Unit) {
+    AuthWebViewScreen(
+        url = AuthManager.REGISTER_URL, title = "Tạo tài khoản",
+        auth = auth, onBack = onBack, onDone = onDone
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun AuthWebViewScreen(
+    url: String, title: String, auth: AuthManager,
+    onBack: () -> Unit, onDone: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
-    var status by remember { mutableStateOf("Đang mở trang đăng nhập BongdaPlus…") }
+    var status by remember(url) { mutableStateOf("Đang mở $title BongdaPlus…") }
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text("Đăng nhập") },
+            title = { Text(title) },
             navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } }
         )
     }) { pad ->
@@ -189,13 +229,13 @@ fun LoginScreen(auth: AuthManager, onBack: () -> Unit, onDone: () -> Unit) {
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, url: String) {
                             if (auth.hasSessionCookie() ||
-                                (url.contains("bongdaplus.vn") && !url.contains("Account/Login"))) {
-                                status = "✅ Đăng nhập thành công! Đang lưu…"
+                                (url.contains("bongdaplus.vn") && !url.contains("Account/Login") && !url.contains("Account/Register"))) {
+                                status = "✅ Thành công! Đang lưu…"
                                 scope.launch { auth.markLoggedIn(""); onDone() }
                             }
                         }
                     }
-                    loadUrl(AuthManager.LOGIN_URL)
+                    loadUrl(url)
                 }
             }, modifier = Modifier.fillMaxSize())
         }

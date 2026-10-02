@@ -117,15 +117,18 @@ class MainActivity : ComponentActivity() {
                             val cached = ArticleCache.get(id)
                             val article = cached?.takeIf { it.url == url }
                                 ?: Article(BongDaPlusScraper.idFromUrl(url), "Bài viết", url)
-                            DetailScreen(article, auth, bookmarks,
+                            DetailScreen(article, auth, bookmarks, prefs,
                                 onBack = { nav.popBackStack() },
-                                onOpenUrl = { u ->
-                                    val na = Article(BongDaPlusScraper.idFromUrl(u), "Bài viết", u)
-                                    openArticle(na)
-                                })
+                                onOpen = ::openArticle,
+                                onLogin = { nav.navigate("login") })
                         }
                         composable("login") {
                             LoginScreen(auth,
+                                onBack = { nav.popBackStack() },
+                                onDone = { nav.popBackStack() })
+                        }
+                        composable("register") {
+                            RegisterScreen(auth,
                                 onBack = { nav.popBackStack() },
                                 onDone = { nav.popBackStack() })
                         }
@@ -135,6 +138,7 @@ class MainActivity : ComponentActivity() {
                         composable("account") {
                             AccountScreen(auth, prefs,
                                 onLogin = { nav.navigate("login") },
+                                onRegister = { nav.navigate("register") },
                                 onSaved = { nav.navigate("saved") })
                         }
                     }

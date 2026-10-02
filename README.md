@@ -8,16 +8,17 @@ App đọc tin từ **https://bongdaplus.vn**, có **đăng nhập tài khoản 
 > bài chi tiết luôn ghi nguồn + link gốc.
 
 ## Tính năng
-- 📰 Trang chủ: Mới nhất, Việt Nam, Ngoại hạng Anh, C1, La Liga, Serie A,
-  Bundesliga, Ligue 1, Chuyển nhượng, Nhận định, Hậu trường, Video…
-- 🔍 Tìm kiếm, ⭐ lưu tin đọc sau (offline bookmark)
-- 🔐 **Đăng nhập**: mở trang login chính thức của BongdaPlus trong app
-  (hỗ trợ Email + Google + Apple như trên web). Session lưu bằng cookie,
-  dùng để đọc bài Premium.
-- 🔔 **Thông báo từ tài khoản**: sau khi đăng nhập, vào ⚙ Cài đặt chọn
-  chuyên mục theo dõi → app quét tin ~45 phút/lần (WorkManager), có tin
-  mới sẽ đẩy notification, bấm để mở bài.
-- 🌙 Tự theo Material You, đọc bài tối ưu mobile.
+- 📰 Trang chủ: hero carousel, breaking NÓNG, 13 chuyên mục, tin mới nhất,
+  kéo-tải-lại, skeleton loading, dark mode (Hệ thống/Sáng/Tối)
+- 📖 **Đọc bài native 100%** (không WebView thô): hero, tiêu đề, tác giả,
+  giờ đăng, cảm xúc 👍❤️😮, đoạn/tiêu đề/ảnh-caption/trích dẫn, chỉnh cỡ chữ A-/A+
+- 💬 **Bình luận thật**: đọc bình luận từ BongdaPlus, gửi bình luận bằng
+  tài khoản đã đăng nhập, xem số lượng realtime
+- 🔐 **Đăng nhập + Đăng ký**: WebView trang chính thức member.bongdaplus.vn
+  (Email/Google/Apple). Session dùng để đọc Premium + gửi bình luận
+- 🔔 **Thông báo 2 loại**: tin mới theo chuyên mục + **bình luận mới ở bài đã lưu**
+  (so số liệu thật qua API, ~45 phút/lần)
+- 🔍 Tìm kiếm, ⭐ lưu tin đọc sau
 
 ## Cách mở / build (Android Studio)
 1. Mở Android Studio → **Open** → chọn thư mục `BongDaPlus`.

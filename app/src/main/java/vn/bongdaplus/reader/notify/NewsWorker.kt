@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.first
 import vn.bongdaplus.reader.MainActivity
 import vn.bongdaplus.reader.data.AuthManager
 import vn.bongdaplus.reader.data.BongDaPlusScraper
+import vn.bongdaplus.reader.data.BookmarkStore
 import java.util.concurrent.TimeUnit
 
 object NotifyHelper {
@@ -65,10 +66,10 @@ object NotifyHelper {
 }
 
 /**
- * Poll tin mới mỗi ~45 phút. Chỉ notify khi:
- * - user bật thông báo, và
- * - có bài mới chưa thấy, ưu tiên chuyên mục user theo dõi.
- * Cần đăng nhập để cá nhân hoá follow; chưa login vẫn báo tin nóng.
+ * Poll tin mới mỗi ~45 phút + kiểm tra bình luận mới ở bài đã lưu.
+ * - Tin mới: so với lastSeenIds, ưu tiên chuyên mục theo dõi.
+ * - Bình luận: so số bình luận thật (API getNewsEmotion) của bài đã lưu
+ *   với lần quét trước; tăng -> đẩy notification 💬.
  */
 class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(appCtx, params) {
     override suspend fun doWork(): Result {
@@ -101,9 +102,43 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
                 )
                 auth.saveLastSeen((fresh.map { it.id } + lastSeen).take(30).toSet())
             }
+            checkComments(auth, cookies)
             Result.success()
         } catch (_: Exception) {
             Result.retry()
         }
+    }
+
+    /**
+     * Thông báo bình luận mới: so sánh số bình luận thật (API getNewsEmotion)
+     * của các bài đã lưu với lần quét trước. Lần đầu chỉ lưu mốc, không báo.
+     */
+    private suspend fun checkComments(auth: AuthManager, cookies: Map<String, String>) {
+        try {
+            val enabled = auth.notifyComments.first()
+            if (!enabled) return
+            NotifyHelper.ensureChannel(applicationContext)
+            val saved = try { BookmarkStore(applicationContext).flow().first() } catch (_: Exception) { return }
+            if (saved.isEmpty()) return
+            val counts = auth.commentCounts().toMutableMap()
+            var changed = false
+            for (a in saved.take(5)) {
+                try {
+                    val ref = BongDaPlusScraper.fetchObjectRef(a.url, cookies) ?: continue
+                    val emo = BongDaPlusScraper.fetchEmotion(ref.first, ref.second, cookies)
+                    val old = counts[a.id]
+                    if (old != null && emo.comments > old) {
+                        NotifyHelper.show(
+                            applicationContext,
+                            "💬 Bình luận mới (+${emo.comments - old})",
+                            a.title, a.url,
+                            (a.id.hashCode() % 90000) + 10000
+                        )
+                    }
+                    if (counts[a.id] != emo.comments) { counts[a.id] = emo.comments; changed = true }
+                } catch (_: Exception) { }
+            }
+            if (changed) auth.saveCommentCounts(counts)
+        } catch (_: Exception) { }
     }
 }
