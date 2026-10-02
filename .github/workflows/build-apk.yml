@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,3 +60,15 @@ jobs:
           name: BongDaPlus-release-apk
           path: app/build/outputs/apk/release/app-release.apk
           retention-days: 90
+
+      # Tạo GitHub Release mỗi lần chạy (bỏ qua PR), đính kèm cả 2 APK ký cùng keystore
+      - name: Create GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: BongDaPlus v1.0.${{ github.run_number }}
+          generate_release_notes: true
+          files: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release.apk
