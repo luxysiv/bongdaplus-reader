@@ -550,44 +550,29 @@ object BongDaPlusScraper {
         }
 
     /**
-     * Thích / Không thích 1 bình luận (OkHttp + URL cuối).
-     * Web (bongdaplus.js) tin HTTP 200 và KHÔNG đọc lại số đếm — vì mảnh
-     * /binh-luan bị server cache vài chục giây, đọc lại số đếm để "xác minh"
-     * luôn sai ở lần bấm thứ 2 (hoàn tác) dù server đã nhận.
-     * App xác minh bằng TRẠNG THÁI vote của member
-     * (GET /GetCommentEmotion + chống cache ?t=...) thay vì số đếm.
+     * Thích / Không thích 1 bình luận. Web (bongdaplus.js) chỉ tin HTTP 200,
+     * không đọc lại gì (response 0 byte) — server tự toggle mỗi POST cùng type.
+     * App làm y hệt: POST đúng 1 lần, 200 + không bounce login = thành công.
+     * Mọi bước "xác minh" đọc lại (số đếm /GetCommentEmotion) đều đã gây báo
+     * sai vì số đếm và API trạng thái đều bị server cache — nên bỏ hẳn.
+     * UI cập nhật lạc quan rồi tải lại để chốt theo server.
      */
     suspend fun setCommentEmotion(objectId: String, commentId: String, like: Boolean,
                                    cookies: Map<String, String>,
                                    pageUrl: String = "$BASE/",
-                                   objectType: String = "1",
-                                   expectVoted: Boolean = true): Boolean =
+                                   objectType: String = "1"): Boolean =
         withContext(Dispatchers.IO) {
             val type = if (like) "1" else "7"
-            // 1) OkHttp POST đúng 1 lần (gửi lại sẽ bật/tắt liên tục)
-            val postedOk = try {
+            try {
                 val r = Http.postForm("$BASE/setCommentEmotion/$objectId/$commentId/$type",
                     emptyMap(), pageUrl) ?: return@withContext jsoupVoteOnce(
                     "$BASE/setCommentEmotion/$objectId/$commentId/$type", cookies, pageUrl)
                 if (r.bouncedToLogin() || r.code != 200) return@withContext false
                 true
             } catch (_: Exception) {
-                return@withContext jsoupVoteOnce(
+                jsoupVoteOnce(
                     "$BASE/setCommentEmotion/$objectId/$commentId/$type", cookies, pageUrl)
             }
-            if (!postedOk) return@withContext false
-            // 2) Xác minh trạng thái vote của chính member (thử lại 1 lần sau 2 giây)
-            val want = if (expectVoted) type.toInt() else -1
-            repeat(2) { attempt ->
-                if (attempt == 1) try { kotlinx.coroutines.delay(2000) } catch (_: Exception) { }
-                val state = try { getMyCommentVotes(objectId, objectType, cookies) }
-                catch (_: Exception) { null }
-                if (state == null) return@withContext true // không đọc được: tin HTTP 200 như web
-                val got = state[commentId] ?: 0
-                if (expectVoted && got == want) return@withContext true
-                if (!expectVoted && got != type.toInt()) return@withContext true
-            }
-            false
         }
 
     /** Jsoup thử POST vote 1 lần duy nhất (chỉ khi OkHttp lỗi mạng). */
@@ -606,18 +591,14 @@ object BongDaPlusScraper {
     }
 
     /**
-     * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow. Web toggle: bấm lại cảm xúc
-     * đang chọn = gỡ. Xác minh bằng logNewsEmotion.emotionType của member
-     * (expectEmotion: kỳ vọng sau bấm; 0 = kỳ vọng đã gỡ), không dùng số đếm
-     * vì tổng cảm xúc cũng bị cache như /binh-luan.
+     * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow. Web toggle (bấm lại = gỡ) và chỉ
+     * tin HTTP 200 — app y hệt, không xác minh đọc lại (dính cache server).
      */
     suspend fun setNewsEmotion(objectId: String, objectType: String, emotionType: Int,
                                  cookies: Map<String, String>,
-                                 pageUrl: String = "$BASE/",
-                                 expectEmotion: Int = emotionType): Boolean =
+                                 pageUrl: String = "$BASE/"): Boolean =
         withContext(Dispatchers.IO) {
-            // 1) OkHttp POST đúng 1 lần
-            val postedOk = try {
+            try {
                 val r = Http.postForm("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType",
                     emptyMap(), pageUrl)
                     ?: return@withContext jsoupVoteOnce(
@@ -625,19 +606,9 @@ object BongDaPlusScraper {
                 if (r.bouncedToLogin() || r.code != 200) return@withContext false
                 true
             } catch (_: Exception) {
-                return@withContext jsoupVoteOnce(
+                jsoupVoteOnce(
                     "$BASE/setNewsEmotion/$objectId/$objectType/$emotionType", cookies, pageUrl)
             }
-            if (!postedOk) return@withContext false
-            // 2) Xác minh trạng thái của member (thử lại 1 lần sau 2 giây)
-            repeat(2) { attempt ->
-                if (attempt == 1) try { kotlinx.coroutines.delay(2000) } catch (_: Exception) { }
-                val got = try { fetchMyNewsEmotion(objectId, objectType, cookies) }
-                catch (_: Exception) { null }
-                if (got == null) return@withContext true // không đọc được: tin HTTP 200 như web
-                if (got == expectEmotion) return@withContext true
-            }
-            false
         }
 
     /** Cảm xúc bài viết của chính member (0 = chưa chọn). Thử cả 2 objectType. */

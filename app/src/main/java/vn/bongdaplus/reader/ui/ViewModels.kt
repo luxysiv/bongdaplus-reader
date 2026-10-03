@@ -201,7 +201,7 @@ class DetailViewModel : ViewModel() {
             val ok = try {
                 BongDaPlusScraper.setCommentEmotion(
                     d.objectId, commentId, like, cookiesOf(cookieProvider),
-                    d.article.url, d.objectType, expectVoted = !undo)
+                    d.article.url, d.objectType)
             } catch (_: Exception) { false }
             loadComments()
             if (!ok) _sendMsg.value = "👍/👎 thất bại — server chưa nhận, thử lại sau."
@@ -217,8 +217,7 @@ class DetailViewModel : ViewModel() {
             try {
                 val ok = BongDaPlusScraper.setNewsEmotion(
                     d.objectId, d.objectType, emotionType,
-                    cookiesOf(cookieProvider), d.article.url,
-                    expectEmotion = if (undo) 0 else emotionType)
+                    cookiesOf(cookieProvider), d.article.url)
                 if (ok) {
                     val e = try {
                         BongDaPlusScraper.fetchEmotion(

@@ -98,6 +98,7 @@ object Http {
             params.forEach { (k, v) -> form.add(k, v) }
             val req = Request.Builder().url(url).post(form.build())
                 .header("User-Agent", UA)
+                .header("Accept", "*/*")
                 .header("X-Requested-With", "XMLHttpRequest")
                 .header("Origin", "https://bongdaplus.vn")
                 .header("Referer", referer)
