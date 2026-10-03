@@ -348,8 +348,80 @@ class DetailViewModel : ViewModel() {
 }
 /* (Chi tiết render native 100% — không dùng WebView.) */
 
-/** Lịch sử thông báo member thật (div#lstnoti) — ai thích/không thích bình luận của bạn */
-class NotifViewModel : ViewModel() {
+/** Tab Tỉ số: Lịch thi đấu / Kết quả / BXH theo giải (API data JSON của web). */
+class ScoresViewModel : ViewModel() {
+    val tab = MutableStateFlow(0)          // 0=Lịch, 1=Kết quả, 2=BXH
+    val comp = MutableStateFlow<String?>(null)  // null=Tất cả (Lịch/KQ); BXH mặc định V.League
+    private val _matches = MutableStateFlow<List<ScoreMatch>>(emptyList())
+    val matches: StateFlow<List<ScoreMatch>> = _matches
+    private val _standings = MutableStateFlow<List<StandingRow>>(emptyList())
+    val standings: StateFlow<List<StandingRow>> = _standings
+    private val _loading = MutableStateFlow(true)
+    val loading: StateFlow<Boolean> = _loading
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+
+    fun setTab(i: Int) {
+        if (tab.value == i) return
+        tab.value = i
+        // Vào BXH mà đang chọn "Tất cả" -> mặc định V.League
+        if (i == 2 && comp.value == null) comp.value = "bong-da-viet-nam"
+        load()
+    }
+
+    fun setComp(slug: String?) {
+        if (comp.value == slug) return
+        comp.value = slug
+        load()
+    }
+
+    fun load() {
+        viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
+            try {
+                when (tab.value) {
+                    2 -> {
+                        val slug = comp.value ?: "bong-da-viet-nam"
+                        val rows = ScoresApi.standings(slug)
+                        _standings.value = rows
+                        if (rows.isEmpty()) {
+                            _error.value = if (slugHasRank(slug)) "Chưa có dữ liệu, thử lại sau."
+                            else "Giải này không có bảng xếp hạng."
+                        }
+                    }
+                    1 -> {
+                        _matches.value = ScoresApi.results(comp.value)
+                        if (_matches.value.isEmpty()) _error.value = "Chưa có kết quả."
+                    }
+                    else -> {
+                        _matches.value = ScoresApi.fixtures(comp.value)
+                        if (_matches.value.isEmpty()) _error.value = "Chưa có lịch thi đấu."
+                    }
+                }
+            } catch (e: Exception) {
+                _error.value = "Không tải được: ${e.message?.take(80)}"
+            }
+            _loading.value = false
+        }
+    }
+
+    private var rankCache: Map<String, Boolean>? = null
+
+    /** Giải có BXH không (để báo đúng: chưa có dữ liệu vs không có BXH). */
+    private suspend fun slugHasRank(slug: String): Boolean {
+        return try {
+            var m = rankCache
+            if (m == null) {
+                m = ScoresApi.tournaments().associate { it.file to it.hasRank }
+                rankCache = m
+            }
+            m[slug] ?: true
+        } catch (_: Exception) { true }
+    }
+}
+
+/** Lịch sử thông báo member thật (div#lstnoti) — ai thích/không thích bình luận của bạn */class NotifViewModel : ViewModel() {
     var cookieProvider: () -> Map<String, String> = { emptyMap() }
     private val _items = MutableStateFlow<List<MemberNotification>>(emptyList())
     val items: StateFlow<List<MemberNotification>> = _items
