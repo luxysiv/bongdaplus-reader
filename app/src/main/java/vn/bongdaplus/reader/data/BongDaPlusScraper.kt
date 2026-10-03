@@ -224,20 +224,36 @@ object BongDaPlusScraper {
             if (ytId != null && (ogImg.isNullOrBlank() || ogImg.contains("logo"))) {
                 ogImg = "https://i.ytimg.com/vi/$ytId/hqdefault.jpg"
             }
-            // tác giả + giờ từ JSON-LD NewsArticle (chuẩn nhất)
-            // Thực tế file .mht thật cho thấy site không còn render ld+json,
-            // chỉ có <meta name=author> chung + <time datetime>.
+            // tác giả + giờ từ JSON-LD NewsArticle (chuẩn nhất, web thật luôn có)
             val ld = doc.select("script[type=application/ld+json]").map { it.html() }
                 .firstOrNull { it.contains("NewsArticle") } ?: ""
             val author = Regex("\"name\"\\s*:\\s*\"([^\"]+)\"").find(
                 ld.substringAfter("\"author\"").take(300)
             )?.groupValues?.get(1)
-                ?: doc.selectFirst(".author-name, .author")?.text()?.trim()?.ifBlank { null }
+                ?: doc.selectFirst(".author-name, .author, .author-info .name")?.text()?.trim()?.ifBlank { null }
                 ?: doc.selectFirst("meta[name=author]")?.attr("content")?.ifBlank { null }
+            // Avatar + chức danh tác giả từ khối ld+json Person thứ 2 (web thật có)
+            val personLd = doc.select("script[type=application/ld+json]").map { it.html() }
+                .firstOrNull { it.contains("\"Person\"") && it.contains("jobTitle") } ?: ""
+            val authorAvatar = Regex("\"image\"\\s*:\\s*\"([^\"]+)\"").find(personLd)
+                ?.groupValues?.get(1)?.takeIf { it.startsWith("http") }
+                ?: doc.selectFirst(".author-info img, .author img")?.attr("abs:src")?.takeIf { it.startsWith("http") }
+            val authorRole = Regex("\"jobTitle\"\\s*:\\s*\"([^\"]+)\"").find(personLd)
+                ?.groupValues?.get(1)
+                ?: doc.selectFirst(".author-info .role, .author .role")?.text()?.trim()?.ifBlank { null }
             val published = Regex("\"datePublished\"\\s*:\\s*\"([^\"]+)\"").find(ld)?.groupValues?.get(1)
                 ?: doc.selectFirst("meta[property=article:published_time]")?.attr("content")
                 ?: doc.selectFirst("time[datetime]")?.attr("datetime")?.ifBlank { null }
                 ?: doc.selectFirst("time")?.text()?.trim()
+            // Sapo (đoạn mở đầu in đậm kiểu báo): og:description / ld description / h2.sapo
+            val sapo = doc.selectFirst("h2.sapo, .sapo, .lead, .summary")?.text()?.trim()?.takeIf { it.length > 10 }
+                ?: Regex("\"description\"\\s*:\\s*\"([^\"]{20,500})\"").find(ld)?.groupValues?.get(1)?.trim()
+                ?: doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty()
+            // Tags bài viết
+            val tags = try {
+                doc.select("div.tags a, .tag-list a, a[href*=-tags]").map { it.text().trim() }
+                    .filter { it.length in 2..40 }.distinct().take(8)
+            } catch (_: Exception) { emptyList() }
             // .mht thật: không còn #objectid/#objecttype trong HTML tĩnh (render bằng JS).
             // Fallback dùng id số đuôi URL (vd ...-5239382610.html) + objectType=1 (tin tức).
             val rawOid = doc.selectFirst("#objectid")?.attr("value")?.trim() ?: ""
@@ -250,7 +266,9 @@ object BongDaPlusScraper {
             // Ưu tiên API, fallback đếm inline từ .mht (a.emo.comment#ncmt_*, #numemo*)
             val emotion = try { fetchEmotion(objectId, objectType, cookies) } catch (_: Exception) { Emotion() }
                 .takeIf { it.comments > 0 || it.liked > 0 } ?: parseInlineEmotion(doc)
-            ArticleDetail(base, author, published, bodyEl.html(), bodyEl.text().take(600),
+            val isVideoPage = hasVideo || url.contains("/video/") || catSlug == "video"
+            ArticleDetail(base, author, authorRole, authorAvatar, published, sapo, tags, isVideoPage,
+                bodyEl.html(), bodyEl.text().take(600),
                 blocks, objectId, objectType, emotion)
         }
 

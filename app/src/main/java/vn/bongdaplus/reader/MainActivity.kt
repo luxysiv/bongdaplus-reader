@@ -149,7 +149,8 @@ class MainActivity : ComponentActivity() {
                             DetailScreen(article, auth, bookmarks, prefs,
                                 onBack = { nav.popBackStack() },
                                 onOpen = ::openArticle,
-                                onLogin = { nav.navigate("login") })
+                                onLogin = { nav.navigate("login") },
+                                onOpenDisplay = { nav.navigate("display") })
                         }
                         composable("login") {
                             NativeLoginScreen(auth,
@@ -181,7 +182,12 @@ class MainActivity : ComponentActivity() {
                                 onRegister = { nav.navigate("register") },
                                 onSaved = { nav.navigate("saved") },
                                 onOpenArticle = ::openArticle,
-                                onNotifs = { nav.navigate("notifs") })
+                                onNotifs = { nav.navigate("notifs") },
+                                onDisplay = { nav.navigate("display") })
+                        }
+                        composable("display") {
+                            DisplaySettingsScreen(prefs,
+                                onBack = { nav.popBackStack() })
                         }
                         composable("notifs") {
                             MemberNotifsScreen(auth,

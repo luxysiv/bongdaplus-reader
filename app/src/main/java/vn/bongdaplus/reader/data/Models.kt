@@ -14,7 +14,12 @@ data class Article(
 data class ArticleDetail(
     val article: Article,
     val author: String? = null,
+    val authorRole: String? = null,
+    val authorAvatar: String? = null,
     val publishedAt: String? = null,
+    val sapo: String = "",
+    val tags: List<String> = emptyList(),
+    val isVideo: Boolean = false,
     val bodyHtml: String = "",
     val bodyText: String = "",
     val blocks: List<ContentBlock> = emptyList(),
