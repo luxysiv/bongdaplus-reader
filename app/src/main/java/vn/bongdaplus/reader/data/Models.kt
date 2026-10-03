@@ -162,7 +162,19 @@ val CATEGORY_GROUPS = listOf(
 val CATEGORIES: List<Category> = CATEGORY_GROUPS.flatMap { it.cats }
 
 /** Chuyên mục bên lề: không đưa lên dòng Tin mới nhất trang chủ. */
-val HOME_EXCLUDED_SLUGS = setOf("nhan-dinh-bong-da-tags", "hau-truong-bong-da")
+val HOME_EXCLUDED_SLUGS = setOf(
+    "nhan-dinh-bong-da-tags", "hau-truong-bong-da", "bong-da-cuoc-song"
+)
+
+/**
+ * Slug chuyên mục hiệu dụng: ưu tiên category parse được, không thì tách từ
+ * URL (tin dòng trang chủ có category=null nhưng URL luôn chứa slug,
+ * vd /hau-truong-bong-da/...). Đây mới là căn cứ chặn bài lạc đề.
+ */
+fun Article.catSlug(): String =
+    category?.takeIf { it.isNotBlank() }
+        ?: url.substringAfter("bongdaplus.vn/").substringBefore("/")
+            .substringBefore("?").trim()
 
 /** Tên hiển thị của chuyên mục: tĩnh -> menu động -> đoán từ slug. */
 fun catName(slug: String?): String {

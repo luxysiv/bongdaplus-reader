@@ -45,16 +45,16 @@ class HomeViewModel : ViewModel() {
     )
 
     val breaking: StateFlow<List<Article>> = _articles.map { l ->
-        l.filter { it.category !in HOME_EXCLUDED_SLUGS }.take(3)
+        l.filter { it.catSlug() !in HOME_EXCLUDED_SLUGS }.take(3)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val featured: StateFlow<List<Article>> = _articles.map { l ->
-        val core = l.filter { it.category !in HOME_EXCLUDED_SLUGS }
+        val core = l.filter { it.catSlug() !in HOME_EXCLUDED_SLUGS }
         (core.filter { !it.imageUrl.isNullOrBlank() }.take(5)).ifEmpty { core.take(5) }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val latest: StateFlow<List<Article>> = _articles.map { l ->
         val top = l.take(5).toSet()
         l.filter { it !in top && !it.url.contains("/video/") &&
-            it.category !in HOME_EXCLUDED_SLUGS }
+            it.catSlug() !in HOME_EXCLUDED_SLUGS }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     /** Highlight & video trên trang chủ (lọc từ pool Main, không gọi thêm). */
     val videos: StateFlow<List<Article>> = _articles.map { l ->

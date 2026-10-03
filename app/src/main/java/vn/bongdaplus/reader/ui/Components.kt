@@ -237,41 +237,6 @@ fun MostReadRow(rank: Int, a: Article, onClick: () -> Unit) {
     }
 }
 
-// ---------- Thẻ mục trang Main: 1 thẻ lớn (ảnh + tiêu đề phủ) ----------
-
-@Composable
-fun HomeFeatureCard(a: Article, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-            .fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Box(Modifier.fillMaxWidth().height(190.dp)) {
-            if (!a.imageUrl.isNullOrBlank()) {
-                AsyncImage(a.imageUrl, null,
-                    modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            } else {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primaryContainer))
-            }
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f)),
-                        startY = 150f
-                    )
-                )
-            )
-            Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-                MetaLine(a, light = true)
-                Spacer(Modifier.height(4.dp))
-                Text(a.title, color = Color.White, fontWeight = FontWeight.Bold,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium)
-            }
-        }
-    }
-}
-
 // ---------- Ô lưới trang Main (2 ô 1 hàng) ----------
 
 @Composable

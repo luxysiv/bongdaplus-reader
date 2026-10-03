@@ -128,28 +128,15 @@ fun HomeScreen(
                             )
                         }
                     }
-                    // Các mục trên Main (thay tab Chuyên mục): mỗi mục vài bài
-                    // tiêu biểu, bấm vào đọc tiếp. List và ô lưới đan xen.
+                    // Các mục trên Main (thay tab Chuyên mục): chuẩn 1 kiểu —
+                    // bài có ảnh vào ô lưới, bài không ảnh vào danh sách.
                     blocks.forEach { (slug, list) ->
-                        when (slug) {
-                            // Việt Nam: 1 thẻ lớn + list
-                            "bong-da-viet-nam" -> {
-                                item { SectionHeader(catName(slug), "Xem thêm") { onFeed(slug) } }
-                                if (list.isNotEmpty()) {
-                                    item { HomeFeatureCard(list.first(), onClick = { onOpen(list.first()) }) }
-                                }
-                                items(list.drop(1), key = { it.id }) { a ->
-                                    NewsRowCard(a, onClick = { onOpen(a) })
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(horizontal = 12.dp),
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                    )
-                                }
-                            }
-                            // NHA + C1: ô lưới 2 cột
-                            "ngoai-hang-anh", "champions-league-cup-c1" -> {
-                                item { SectionHeader(catName(slug), "Xem thêm") { onFeed(slug) } }
-                                items(list.chunked(2)) { pair ->
+                        val photos = list.filter { !it.imageUrl.isNullOrBlank() }.take(4)
+                        val textOnly = list.filter { it.imageUrl.isNullOrBlank() }
+                        if (photos.isNotEmpty() || textOnly.isNotEmpty()) {
+                            item { SectionHeader(catName(slug), "Xem thêm") { onFeed(slug) } }
+                            if (photos.isNotEmpty()) {
+                                items(photos.chunked(2), key = { it.first().id }) { pair ->
                                     Row(
                                         Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -163,16 +150,12 @@ fun HomeScreen(
                                     Spacer(Modifier.height(10.dp))
                                 }
                             }
-                            // Còn lại: danh sách
-                            else -> {
-                                item { SectionHeader(catName(slug), "Xem thêm") { onFeed(slug) } }
-                                items(list, key = { it.id }) { a ->
-                                    NewsRowCard(a, onClick = { onOpen(a) })
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(horizontal = 12.dp),
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                    )
-                                }
+                            items(textOnly, key = { it.id }) { a ->
+                                NewsRowCard(a, onClick = { onOpen(a) })
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                )
                             }
                         }
                     }
