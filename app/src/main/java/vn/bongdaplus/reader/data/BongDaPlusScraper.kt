@@ -211,11 +211,17 @@ object BongDaPlusScraper {
             val blocks = when {
                 hasVideo -> buildList {
                     add(ContentBlock.Video(videoSrc, ytId, title))
-                    if (clipDesc.isNotBlank()) add(ContentBlock.Paragraph(clipDesc))
-                    // các đoạn chữ còn lại trong clip-info (tags đã nằm ngoài nên an toàn)
+                    // clip-info chứa đúng 3 thứ: tiêu đề + mô tả + giờ đăng.
+                    // Bỏ đoạn trùng tiêu đề và dòng giờ (đã hiện ở header) để khỏi rác.
+                    val skipTitle = title.trim()
+                    val timeRe = Regex("""\d{1,2}:\d{2}\s*-\s*\d{1,2}/\d{1,2}/\d{4}""")
+                    fun keep(t: String) = t.isNotBlank() && t.length > 2 &&
+                        t != skipTitle && !timeRe.containsMatchIn(t)
+                    if (keep(clipDesc)) add(ContentBlock.Paragraph(clipDesc))
+                    // các đoạn chữ còn lại trong clip-info (tags nằm ngoài div này nên an toàn)
                     bodyEl.select("p").forEach {
                         val t = it.text().trim()
-                        if (t.isNotBlank() && t != clipDesc && t.length > 2) add(ContentBlock.Paragraph(t))
+                        if (t != clipDesc && keep(t)) add(ContentBlock.Paragraph(t))
                     }
                 }.take(50)
                 bodyEl.tagName() == "body" -> emptyList()
@@ -249,9 +255,11 @@ object BongDaPlusScraper {
             val sapo = doc.selectFirst("h2.sapo, .sapo, .lead, .summary")?.text()?.trim()?.takeIf { it.length > 10 }
                 ?: Regex("\"description\"\\s*:\\s*\"([^\"]{20,500})\"").find(ld)?.groupValues?.get(1)?.trim()
                 ?: doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty()
-            // Tags bài viết
+            // Tags bài viết: CHỈ trong div.hash-tags của bài (web thật).
+            // Không dùng a[href*=-tags] toàn trang vì dính link menu
+            // (nhan-dinh-bong-da-tags, cup-lien-doan-phap-tags...).
             val tags = try {
-                doc.select("div.tags a, .tag-list a, a[href*=-tags]").map { it.text().trim() }
+                doc.select("div.hash-tags a").map { it.text().trim() }
                     .filter { it.length in 2..40 }.distinct().take(8)
             } catch (_: Exception) { emptyList() }
             // .mht thật: không còn #objectid/#objecttype trong HTML tĩnh (render bằng JS).
@@ -260,7 +268,8 @@ object BongDaPlusScraper {
             val rawOtype = doc.selectFirst("#objecttype")?.attr("value")?.trim() ?: ""
             val id = idFromUrl(url)
             val objectId = rawOid.ifBlank { id.filter { it.isDigit() }.ifBlank { id } }
-            val objectType = rawOtype.ifBlank { "1" }
+            // Web thật: tin tức type=0, video type=1. Đoán theo URL khi thiếu.
+            val objectType = rawOtype.ifBlank { if (url.contains("/video/")) "1" else "0" }
             val catSlug = doc.selectFirst("#catrefid")?.attr("value")?.ifBlank { null }
             val base = Article(id, title, url, ogImg, catSlug)
             // Ưu tiên API, fallback đếm inline từ .mht (a.emo.comment#ncmt_*, #numemo*)
@@ -307,7 +316,11 @@ object BongDaPlusScraper {
                 val oid = doc.selectFirst("#objectid")?.attr("value")?.trim()
                     ?.ifBlank { null } ?: idFromUrl(url).filter { it.isDigit() }
                 if (oid.isBlank()) return@withContext null
-                val otype = doc.selectFirst("#objecttype")?.attr("value")?.trim()?.ifBlank { null } ?: "1"
+                // Web thật: tin tức type=0, video type=1 (#objecttype trên trang).
+                // Mặc định đoán theo URL khi trang thiếu input (không dò chéo,
+                // tránh lấy nhầm số liệu của bài khác cùng dãy id).
+                val otype = doc.selectFirst("#objecttype")?.attr("value")?.trim()?.ifBlank { null }
+                    ?: if (url.contains("/video/")) "1" else "0"
                 oid to otype
             } catch (_: Exception) {
                 // Mất mạng / timeout vẫn trả fallback từ URL để Worker không bỏ qua
@@ -324,20 +337,17 @@ object BongDaPlusScraper {
                              cookies: Map<String, String> = emptyMap()): Emotion =
         withContext(Dispatchers.IO) {
             if (objectId.isBlank()) return@withContext Emotion()
-            val types = listOf(objectType, if (objectType == "1") "0" else "1").distinct()
-            for (t in types) {
-                try {
-                    val body = Http.get("$BASE/getNewsEmotion/$objectId/$t")?.html
-                        ?: Jsoup.connect("$BASE/getNewsEmotion/$objectId/$t")
-                            .userAgent(UA).timeout(15000).cookies(cookies)
-                            .ignoreContentType(true).get().body().text()
-                    val o = JSONObject(body).optJSONObject("newsUserActivity") ?: continue
-                    val e = Emotion(o.optInt("liked"), o.optInt("heart"), o.optInt("wow"), o.optInt("comments"))
-                    if (e.comments > 0 || e.liked > 0 || e.heart > 0) return@withContext e
-                    if (t == types.last()) return@withContext e
-                } catch (_: Exception) { }
-            }
-            Emotion()
+            // Dùng ĐÚNG objectType của bài (web thật: tin=0, video=1).
+            // Tuyệt đối không dò chéo type khác: dãy id số 2 loại có thể trùng
+            // nhau, dò chéo sẽ lấy nhầm cảm xúc/bình luận của bài khác.
+            try {
+                val body = Http.get("$BASE/getNewsEmotion/$objectId/$objectType")?.html
+                    ?: Jsoup.connect("$BASE/getNewsEmotion/$objectId/$objectType")
+                        .userAgent(UA).timeout(15000).cookies(cookies)
+                        .ignoreContentType(true).get().body().text()
+                val o = JSONObject(body).optJSONObject("newsUserActivity") ?: return@withContext Emotion()
+                Emotion(o.optInt("liked"), o.optInt("heart"), o.optInt("wow"), o.optInt("comments"))
+            } catch (_: Exception) { Emotion() }
         }
 
     suspend fun fetchComments(objectId: String, objectType: String = "1", page: Int = 1,
@@ -359,18 +369,14 @@ object BongDaPlusScraper {
                         li.selectFirst("span[id^=thumdw]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0)
                 }
             }
-            val types = listOf(objectType, if (objectType == "1") "0" else "1").distinct()
-            for (t in types) {
-                try {
-                    val html = Http.get("$BASE/binh-luan/$objectId/$t/$page/0")?.html
-                        ?: Jsoup.connect("$BASE/binh-luan/$objectId/$t/$page/0")
-                            .userAgent(UA).timeout(15000).cookies(cookies)
-                            .ignoreContentType(true).get().body().html()
-                    val out = parseFrag(html)
-                    if (out.isNotEmpty()) return@withContext out
-                } catch (_: Exception) { }
-            }
-            emptyList()
+            // Dùng ĐÚNG objectType của bài, không dò chéo (lý do như trên).
+            try {
+                val html = Http.get("$BASE/binh-luan/$objectId/$objectType/$page/0")?.html
+                    ?: Jsoup.connect("$BASE/binh-luan/$objectId/$objectType/$page/0")
+                        .userAgent(UA).timeout(15000).cookies(cookies)
+                        .ignoreContentType(true).get().body().html()
+                parseFrag(html)
+            } catch (_: Exception) { emptyList() }
         }
 
     /**
@@ -653,92 +659,84 @@ object BongDaPlusScraper {
             }
         }
 
-    /** Cảm xúc bài viết của chính member (0 = chưa chọn). Thử cả 2 objectType. */
+    /** Cảm xúc bài viết của chính member (0 = chưa chọn). Đúng objectType của bài. */
     suspend fun fetchMyNewsEmotion(objectId: String, objectType: String,
                                    cookies: Map<String, String>): Int? =
         withContext(Dispatchers.IO) {
             if (objectId.isBlank() || cookies.isEmpty()) return@withContext null
-            val types = listOf(objectType, if (objectType == "1") "0" else "1").distinct()
-            for (t in types) {
-                try {
-                    val bust = System.currentTimeMillis()
-                    val body = Http.get("$BASE/getNewsEmotion/$objectId/$t?t=$bust",
-                        "$BASE/", xhr = true)?.html
-                        ?: Jsoup.connect("$BASE/getNewsEmotion/$objectId/$t")
-                            .userAgent(UA).timeout(15000).cookies(cookies)
-                            .ignoreContentType(true).get().body().text()
-                    val o = JSONObject(body.trim())
-                    var log: JSONObject? = o.optJSONObject("logNewsEmotion")
-                    if (log == null) {
-                        val keys = o.keys()
-                        while (keys.hasNext()) {
-                            val k = keys.next()
-                            if (k.lowercase() == "lognewsemotion") {
-                                log = o.optJSONObject(k); break
-                            }
+            try {
+                val bust = System.currentTimeMillis()
+                val body = Http.get("$BASE/getNewsEmotion/$objectId/$objectType?t=$bust",
+                    "$BASE/", xhr = true)?.html
+                    ?: Jsoup.connect("$BASE/getNewsEmotion/$objectId/$objectType")
+                        .userAgent(UA).timeout(15000).cookies(cookies)
+                        .ignoreContentType(true).get().body().text()
+                val o = JSONObject(body.trim())
+                var log: JSONObject? = o.optJSONObject("logNewsEmotion")
+                if (log == null) {
+                    val keys = o.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        if (k.lowercase() == "lognewsemotion") {
+                            log = o.optJSONObject(k); break
                         }
                     }
-                    if (log != null) {
-                        var emo = 0
-                        val keys = log.keys()
-                        while (keys.hasNext()) {
-                            val k = keys.next()
-                            if (k.lowercase() == "emotiontype") {
-                                emo = log.optInt(k, log.optString(k, "0")
-                                    .filter { it.isDigit() }.toIntOrNull() ?: 0)
-                                break
-                            }
+                }
+                if (log != null) {
+                    var emo = 0
+                    val keys = log.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        if (k.lowercase() == "emotiontype") {
+                            emo = log.optInt(k, log.optString(k, "0")
+                                .filter { it.isDigit() }.toIntOrNull() ?: 0)
+                            break
                         }
-                        // Chỉ tin khi endpoint này có số liệu (tránh type sai trả rỗng đè)
-                        if (emo != 0) return@withContext emo
                     }
-                } catch (_: Exception) { }
-            }
+                    return@withContext emo
+                }
+            } catch (_: Exception) { }
             0
         }
 
     /**
      * Member đã vote bình luận nào: GET /GetCommentEmotion/{objectId}/{objectType}
      * trả về danh sách (commentId, emotionType). emotionType==1 là đã Thích.
-     * Dùng để tô sáng nút 👍👎 của chính member.
+     * Dùng để tô sáng nút 👍👎 của chính member. Đúng objectType của bài.
      */
     suspend fun getMyCommentVotes(objectId: String, objectType: String,
                                    cookies: Map<String, String>): Map<String, Int> =
         withContext(Dispatchers.IO) {
             if (objectId.isBlank() || cookies.isEmpty()) return@withContext emptyMap()
             val out = mutableMapOf<String, Int>()
-            // Thử cả 2 objectType rồi gộp (app có thể lệch type so với input trang)
-            val types = listOf(objectType, if (objectType == "1") "0" else "1").distinct()
-            for (t in types) {
-                try {
-                    val bust = System.currentTimeMillis()
-                    val body = Http.get("$BASE/GetCommentEmotion/$objectId/$t?t=$bust",
-                        "$BASE/", xhr = true)?.html
-                        ?: Jsoup.connect("$BASE/GetCommentEmotion/$objectId/$t")
-                            .userAgent(UA).timeout(15000).cookies(cookies)
-                            .ignoreContentType(true).get().body().text()
-                    val arr = try { org.json.JSONArray(body.trim()) }
-                    catch (_: Exception) { continue }
-                    for (i in 0 until arr.length()) {
-                        val o = arr.optJSONObject(i) ?: continue
-                        // So tên field không phân biệt hoa/thường, id chịu số lẫn chuỗi
-                        var cid = ""
-                        var emo = 0
-                        val keys = o.keys()
-                        while (keys.hasNext()) {
-                            val k = keys.next()
-                            when (k.lowercase()) {
-                                "commentid", "id" -> cid = o.opt(k)?.toString()
-                                    ?.takeIf { it != "null" }.orEmpty()
-                                "emotiontype", "emotion", "type" ->
-                                    emo = o.optInt(k, o.optString(k, "0").filter { it.isDigit() }
-                                        .toIntOrNull() ?: 0)
-                            }
+            try {
+                val bust = System.currentTimeMillis()
+                val body = Http.get("$BASE/GetCommentEmotion/$objectId/$objectType?t=$bust",
+                    "$BASE/", xhr = true)?.html
+                    ?: Jsoup.connect("$BASE/GetCommentEmotion/$objectId/$objectType")
+                        .userAgent(UA).timeout(15000).cookies(cookies)
+                        .ignoreContentType(true).get().body().text()
+                val arr = try { org.json.JSONArray(body.trim()) }
+                catch (_: Exception) { return@withContext out }
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    // So tên field không phân biệt hoa/thường, id chịu số lẫn chuỗi
+                    var cid = ""
+                    var emo = 0
+                    val keys = o.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        when (k.lowercase()) {
+                            "commentid", "id" -> cid = o.opt(k)?.toString()
+                                ?.takeIf { it != "null" }.orEmpty()
+                            "emotiontype", "emotion", "type" ->
+                                emo = o.optInt(k, o.optString(k, "0").filter { it.isDigit() }
+                                    .toIntOrNull() ?: 0)
                         }
-                        if (cid.isNotBlank()) out[cid] = emo
                     }
-                } catch (_: Exception) { }
-            }
+                    if (cid.isNotBlank()) out[cid] = emo
+                }
+            } catch (_: Exception) { }
             out
         }
 

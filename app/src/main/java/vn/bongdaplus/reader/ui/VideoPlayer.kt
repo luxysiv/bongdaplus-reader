@@ -64,6 +64,9 @@ fun NativeVideoPlayer(
         ExoPlayer.Builder(ctx)
             .setMediaSourceFactory(DefaultMediaSourceFactory(ctx).setDataSourceFactory(dsFactory))
             .build().apply {
+                // KHÔNG tự phát khi prepare xong (kẻo tiếng chạy sau poster
+                // trong lúc user chưa bấm play). Chỉ phát khi user bấm.
+                playWhenReady = false
                 addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) { playError = true }
                 })
