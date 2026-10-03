@@ -22,7 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import vn.bongdaplus.reader.data.SCORE_COMPS
+import vn.bongdaplus.reader.data.CompEntry
 import vn.bongdaplus.reader.data.ScoreMatch
 import vn.bongdaplus.reader.data.StandingRow
 
@@ -35,7 +35,8 @@ import vn.bongdaplus.reader.data.StandingRow
 fun ScoresScreen() {
     val vm: ScoresViewModel = viewModel()
     val tab by vm.tab.collectAsState()
-    val comp by vm.comp.collectAsState()
+    val compKey by vm.compKey.collectAsState()
+    val entries by vm.entries.collectAsState()
     val matches by vm.matches.collectAsState()
     val standings by vm.standings.collectAsState()
     val loading by vm.loading.collectAsState()
@@ -55,26 +56,35 @@ fun ScoresScreen() {
                     Tab(selected = tab == i, onClick = { vm.setTab(i) }, text = { Text(t) })
                 }
             }
-            // Chọn giải
+            // Chọn giải ĐỘNG: chỉ giải đang có trận mới hiện chip
+            // (Euro/World Cup... tự ẩn khi không vào mùa). Đang đá có chấm đỏ + đếm.
+            val chips = remember(entries, tab) {
+                if (tab == 2) entries.filter { it.file.isNotBlank() && it.hasRank }
+                else entries
+            }
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // BXH bắt buộc chọn 1 giải (giải "Tất cả" không có bảng chung)
+                // BXH bắt buộc chọn 1 giải (không có bảng chung)
                 if (tab != 2) {
                     item {
                         FilterChip(
-                            selected = comp == null,
+                            selected = compKey == null,
                             onClick = { vm.setComp(null) },
                             label = { Text("Tất cả") }
                         )
                     }
                 }
-                items(SCORE_COMPS) { (slug, name) ->
+                items(chips, key = { it.key }) { e ->
                     FilterChip(
-                        selected = comp == slug,
-                        onClick = { vm.setComp(slug) },
-                        label = { Text(name) }
+                        selected = compKey == e.key,
+                        onClick = { vm.setComp(e.key) },
+                        label = { Text(compLabel(e)) },
+                        leadingIcon = if (e.live > 0) ({
+                            Box(Modifier.size(8.dp).clip(CircleShape)
+                                .background(Color(0xFFC62828)))
+                        }) else null
                     )
                 }
             }
@@ -282,6 +292,9 @@ private fun StandingsTable(rows: List<StandingRow>) {
         }
     }
 }
+
+private fun compLabel(e: CompEntry): String =
+    if (e.live > 0) "${e.name} •${e.live}" else e.name
 
 private fun parseColor(hex: String?): Color {
     return try {

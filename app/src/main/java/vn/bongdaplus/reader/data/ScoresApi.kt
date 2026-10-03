@@ -12,6 +12,18 @@ data class Comp(
     val hasRank: Boolean,
 )
 
+/** 1 giải đang có lịch (động theo thời gian thực: chỉ giải nào có trận mới hiện).
+ * key: slug trong match (để lọc local); file: slug tournaments (để gọi BXH). */
+data class CompEntry(
+    val key: String,
+    val file: String,
+    val name: String,
+    val hasRank: Boolean,
+    val live: Int,
+    val total: Int,
+    val soon: String,
+)
+
 /** 1 trận: lịch (status=0) / live / xong (status=100, play_time=FT). */
 data class ScoreMatch(
     val id: String,
@@ -96,6 +108,93 @@ object ScoresApi {
         return out
     }
 
+    /** Tên Việt ngắn cho chip giải (API đôi khi để tên Anh). */
+    private val VI_NAMES = mapOf(
+        "bong-da-viet-nam" to "V.League",
+        "vleague-1" to "V.League",
+        "bong-da-anh" to "Ngoại hạng Anh",
+        "bong-da-tay-ban-nha" to "La Liga",
+        "bong-da-y" to "Serie A",
+        "bong-da-duc" to "Bundesliga",
+        "bundesliga" to "Bundesliga",
+        "bong-da-phap" to "Ligue 1",
+        "ligue-1" to "Ligue 1",
+        "la-liga" to "La Liga",
+        "serie-a" to "Serie A",
+        "champions-league-cup-c1" to "Champions League",
+        "europa-league" to "Europa League",
+        "uefa-europa-conference-league" to "Conference League",
+        "uefa-nations-league" to "Nations League",
+        "fifa-world-cup" to "World Cup",
+        "uefa-european" to "Euro",
+        "fa-cup" to "FA Cup",
+        "carabao-cup" to "League Cup",
+        "coppa-italia" to "Coppa Italia",
+        "copa-del-rey" to "Cúp Nhà vua",
+        "dfb-pokal" to "Cúp QG Đức",
+        "coupe-de-france" to "Cúp QG Pháp",
+        "cup-quoc-gia" to "Cúp QG VN",
+        "hang-nhat-quoc-gia" to "Hạng Nhất VN",
+        "bong-da-nu-viet-nam" to "Nữ Việt Nam",
+        "sea-games" to "SEA Games",
+        "asian-cup" to "Asian Cup",
+        "aff-cup" to "AFF Cup",
+        "copa-america" to "Copa America",
+    )
+
+    fun shortName(slug: String, fallback: String): String =
+        VI_NAMES[slug] ?: fallback.ifBlank { slug }
+
+    /**
+     * Dựng chip giải ĐỘNG theo thời gian thực: join tournaments.json với lịch
+     * chung qua tournament_id. Giải nào đang/không có trận thì không hiện chip
+     * (Euro/World Cup chỉ xuất hiện đúng mùa giải). Đang đá xếp trước + đếm live.
+     */
+    suspend fun compEntries(): List<CompEntry> = withContext(Dispatchers.IO) {
+        try {
+            // Lấy tournaments kèm id để join với lịch qua tournament_id
+            val arr = getArr("tournaments") ?: return@withContext emptyList()
+            val tourById = mutableMapOf<String, Comp>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optString("id").trim()
+                val file = o.optString("file").trim()
+                if (id.isBlank() || file.isBlank()) continue
+                val name = o.optString("rename").ifBlank { o.optString("name") }.trim().ifBlank { file }
+                tourById[id] = Comp(file, name.nfcVi().unescapeHtml(), o.optBoolean("has_rank", false))
+            }
+            val fixArr = getArr("lich-thi-dau-bong-da") ?: return@withContext emptyList()
+            data class Acc(var file: String, var name: String, var hasRank: Boolean,
+                           var live: Int, var total: Int, var soon: String)
+            val map = LinkedHashMap<String, Acc>()
+            for (i in 0 until fixArr.length()) {
+                val o = fixArr.optJSONObject(i) ?: continue
+                val t = o.optJSONObject("tournament") ?: continue
+                val key = t.optString("tournament_slug").trim()
+                if (key.isBlank()) continue
+                val tour = tourById[t.optString("tournament_id")]
+                val a = map.getOrPut(key) {
+                    Acc(tour?.file.orEmpty(),
+                        shortName(tour?.file.orEmpty().ifBlank { key },
+                            tour?.name ?: t.optString("tournament_name")),
+                        tour?.hasRank == true, 0, 0, "9")
+                }
+                if (tour != null && a.file.isBlank()) {
+                    a.file = tour.file; a.name = shortName(tour.file, tour.name); a.hasRank = tour.hasRank
+                }
+                val st = o.optInt("status")
+                if (st != 0 && st != 100) a.live++
+                a.total++
+                val s = o.optString("start_time")
+                if (s.isNotBlank() && (a.soon == "9" || s < a.soon)) a.soon = s
+            }
+            map.map { (key, a) ->
+                CompEntry(key, a.file, a.name.nfcVi().unescapeHtml(), a.hasRank, a.live, a.total, a.soon)
+            }.sortedWith(compareByDescending<CompEntry> { it.live }
+                .thenBy { it.soon }.thenByDescending { it.total })
+        } catch (_: Exception) { emptyList() }
+    }
+
     private fun parseMatch(o: JSONObject): ScoreMatch? {
         return try {
             val t = o.optJSONObject("tournament")
@@ -178,19 +277,3 @@ object ScoresApi {
         } catch (_: Exception) { emptyList() }
     }
 }
-
-/** Các giải ưu tiên cho chip chọn nhanh (slug khớp API data + tin tức). */
-val SCORE_COMPS = listOf(
-    "bong-da-viet-nam" to "V.League",
-    "bong-da-anh" to "Ngoại hạng Anh",
-    "bong-da-tay-ban-nha" to "La Liga",
-    "bong-da-y" to "Serie A",
-    "bong-da-duc" to "Bundesliga",
-    "bong-da-phap" to "Ligue 1",
-    "champions-league-cup-c1" to "Champions League",
-    "europa-league" to "Europa League",
-    "uefa-nations-league" to "Nations League",
-    "fifa-world-cup" to "World Cup",
-    "uefa-european" to "Euro",
-    "fa-cup" to "FA Cup",
-)

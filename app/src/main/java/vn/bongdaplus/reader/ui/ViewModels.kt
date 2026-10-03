@@ -367,10 +367,13 @@ class DetailViewModel : ViewModel() {
 }
 /* (Chi tiết render native 100% — không dùng WebView.) */
 
-/** Tab Tỉ số: Lịch thi đấu / Kết quả / BXH theo giải (API data JSON của web). */
+/** Tab Tỉ số: chip giải ĐỘNG theo thời gian thực (giải nào có trận mới hiện). */
 class ScoresViewModel : ViewModel() {
     val tab = MutableStateFlow(0)          // 0=Lịch, 1=Kết quả, 2=BXH
-    val comp = MutableStateFlow<String?>(null)  // null=Tất cả (Lịch/KQ); BXH mặc định V.League
+    /** key giải đang chọn (CompEntry.key); null=Tất cả. BXH luôn chọn 1 giải cụ thể. */
+    val compKey = MutableStateFlow<String?>(null)
+    private val _entries = MutableStateFlow<List<CompEntry>>(emptyList())
+    val entries: StateFlow<List<CompEntry>> = _entries
     private val _matches = MutableStateFlow<List<ScoreMatch>>(emptyList())
     val matches: StateFlow<List<ScoreMatch>> = _matches
     private val _standings = MutableStateFlow<List<StandingRow>>(emptyList())
@@ -380,63 +383,97 @@ class ScoresViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    private var aggFix: List<ScoreMatch> = emptyList()
+    private var aggRes: List<ScoreMatch> = emptyList()
+
+    private fun selected(): CompEntry? =
+        _entries.value.firstOrNull { it.key == compKey.value }
+
+    private fun ranked(): List<CompEntry> =
+        _entries.value.filter { it.file.isNotBlank() && it.hasRank }
+
     fun setTab(i: Int) {
         if (tab.value == i) return
         tab.value = i
-        // Vào BXH mà đang chọn "Tất cả" -> mặc định V.League
-        if (i == 2 && comp.value == null) comp.value = "bong-da-viet-nam"
-        load()
+        if (i == 2 && ranked().none { it.key == compKey.value }) {
+            compKey.value = ranked().firstOrNull()?.key
+        }
+        apply()
     }
 
-    fun setComp(slug: String?) {
-        if (comp.value == slug) return
-        comp.value = slug
-        load()
+    fun setComp(key: String?) {
+        if (compKey.value == key) return
+        compKey.value = key
+        apply()
     }
 
+    /** Tải mới toàn bộ (giải + lịch + kết quả chung), rồi lọc local tức thì. */
     fun load() {
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
             try {
-                when (tab.value) {
-                    2 -> {
-                        val slug = comp.value ?: "bong-da-viet-nam"
-                        val rows = ScoresApi.standings(slug)
-                        _standings.value = rows
-                        if (rows.isEmpty()) {
-                            _error.value = if (slugHasRank(slug)) "Chưa có dữ liệu, thử lại sau."
-                            else "Giải này không có bảng xếp hạng."
-                        }
+                val e = async { ScoresApi.compEntries() }
+                val f = async { ScoresApi.fixtures(null) }
+                val r = async { ScoresApi.results(null) }
+                val list = e.await()
+                aggFix = f.await()
+                aggRes = r.await()
+                _entries.value = list
+                if (tab.value == 2) {
+                    if (ranked().none { it.key == compKey.value }) {
+                        compKey.value = ranked().firstOrNull()?.key
                     }
-                    1 -> {
-                        _matches.value = ScoresApi.results(comp.value)
-                        if (_matches.value.isEmpty()) _error.value = "Chưa có kết quả."
-                    }
-                    else -> {
-                        _matches.value = ScoresApi.fixtures(comp.value)
-                        if (_matches.value.isEmpty()) _error.value = "Chưa có lịch thi đấu."
-                    }
+                } else if (compKey.value != null && list.none { it.key == compKey.value }) {
+                    compKey.value = null
                 }
-            } catch (e: Exception) {
-                _error.value = "Không tải được: ${e.message?.take(80)}"
+                apply()
+            } catch (ex: Exception) {
+                _error.value = "Không tải được: ${ex.message?.take(80)}"
             }
             _loading.value = false
         }
     }
 
-    private var rankCache: Map<String, Boolean>? = null
-
-    /** Giải có BXH không (để báo đúng: chưa có dữ liệu vs không có BXH). */
-    private suspend fun slugHasRank(slug: String): Boolean {
-        return try {
-            var m = rankCache
-            if (m == null) {
-                m = ScoresApi.tournaments().associate { it.file to it.hasRank }
-                rankCache = m
+    /** Lọc local (tức thì, không gọi mạng) — trừ BXH phải tải theo giải. */
+    private fun apply() {
+        _error.value = null
+        val key = compKey.value
+        when (tab.value) {
+            2 -> {
+                val en = selected() ?: ranked().firstOrNull()
+                if (en == null) {
+                    _standings.value = emptyList()
+                    _error.value = "Chưa có dữ liệu bảng xếp hạng."
+                    return
+                }
+                if (compKey.value != en.key) compKey.value = en.key
+                viewModelScope.launch {
+                    _loading.value = true
+                    try {
+                        val rows = ScoresApi.standings(en.file)
+                        _standings.value = rows
+                        if (rows.isEmpty()) _error.value = "Giải này chưa có bảng xếp hạng."
+                    } catch (e: Exception) {
+                        _error.value = "Không tải được: ${e.message?.take(80)}"
+                    }
+                    _loading.value = false
+                }
             }
-            m[slug] ?: true
-        } catch (_: Exception) { true }
+            1 -> {
+                val list = (if (key == null) aggRes else aggRes.filter { it.compSlug == key })
+                    .sortedByDescending { it.startTime }
+                _matches.value = list
+                if (list.isEmpty()) _error.value = "Chưa có kết quả."
+            }
+            else -> {
+                val list = if (key == null) aggFix else aggFix.filter { it.compSlug == key }
+                _matches.value = list.sortedWith(
+                    compareBy<ScoreMatch> { if (!it.isUpcoming && !it.isFinished) 0 else 1 }
+                        .thenBy { it.startTime })
+                if (list.isEmpty()) _error.value = "Chưa có lịch thi đấu."
+            }
+        }
     }
 }
 
