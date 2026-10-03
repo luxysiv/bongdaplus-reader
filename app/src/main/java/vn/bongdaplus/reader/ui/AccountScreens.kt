@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
 import vn.bongdaplus.reader.data.*
+import vn.bongdaplus.reader.notify.NotifyHelper
 
 // ---------- Chẩn đoán phiên đăng nhập (không lộ giá trị cookie) ----------
 
@@ -261,12 +262,34 @@ fun AccountScreen(
             }
             // Thông báo bình luận
             item {
+                var checking by remember { mutableStateOf(false) }
+                var checkMsg by remember { mutableStateOf<String?>(null) }
                 ListItem(
                     headlineContent = { Text("Báo bình luận mới") },
-                    supportingContent = { Text("Bình luận mới + trả lời + 👍/👎 tăng ở bài bạn đã bình luận/lưu") },
+                    supportingContent = {
+                        Text(checkMsg
+                            ?: "Bình luận mới + trả lời + 👍/👎 tăng ở bài bạn đã bình luận/lưu")
+                    },
                     leadingContent = { Icon(Icons.Default.ChatBubble, null) },
                     trailingContent = {
-                        Switch(checked = notifyCmt, onCheckedChange = { scope.launch { auth.setNotifyComments(it) } })
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = {
+                                    if (!checking && logged) {
+                                        checking = true
+                                        checkMsg = "Đang kiểm tra…"
+                                        scope.launch {
+                                            checkMsg = try {
+                                                NotifyHelper.checkMemberNotifsNow(ctx)
+                                            } catch (_: Exception) { "Lỗi, thử lại sau." }
+                                            checking = false
+                                        }
+                                    }
+                                },
+                                enabled = logged && !checking
+                            ) { Text(if (checking) "…" else "Kiểm tra") }
+                            Switch(checked = notifyCmt, onCheckedChange = { scope.launch { auth.setNotifyComments(it) } })
+                        }
                     }
                 )
                 HorizontalDivider()

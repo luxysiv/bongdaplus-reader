@@ -31,8 +31,21 @@ private val TABS = listOf(
 )
 
 class MainActivity : ComponentActivity() {
+    // Android 13+: phải xin quyền push lúc chạy, không là Worker bắn lên cũng bị chặn lặng lẽ
+    private val notifPerm = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            try { notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS) } catch (_: Exception) { }
+        }
+        // Lên lịch quét tin + thông báo bình luận nền
+        try { vn.bongdaplus.reader.notify.NotifyHelper.schedule(this) } catch (_: Exception) { }
         setContent {
             val appCtx = this
             val auth = remember { AuthManager(appCtx) }

@@ -63,6 +63,56 @@ object NotifyHelper {
             WORK_TAG, ExistingPeriodicWorkPolicy.KEEP, req
         )
     }
+
+    /** Thiết bị/hệ thống có đang cho app hiện thông báo không (quyền + kênh). */
+    fun canNotify(ctx: Context): Boolean {
+        return try {
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.areNotificationsEnabled()
+        } catch (_: Exception) { true }
+    }
+
+    /**
+     * Kiểm tra thông báo member NGAY (cho nút bấm tay trong app).
+     * Dùng chung nguồn với Worker nền: API /GetNotificationGeneralInitiator,
+     * fallback div#lstnoti. Trả về chuỗi kết quả để hiển thị.
+     */
+    suspend fun checkMemberNotifsNow(ctx: Context): String {
+        val appCtx = ctx.applicationContext
+        return try {
+            val auth = AuthManager(appCtx)
+            if (!(try { auth.loggedIn.first() } catch (_: Exception) { false }))
+                return "Chưa đăng nhập — đăng nhập rồi kiểm tra lại."
+            val cookies = auth.currentCookies()
+            if (cookies.isEmpty()) return "Chưa có phiên đăng nhập (thiếu cookie)."
+            if (!canNotify(appCtx))
+                return "App đang bị tắt quyền thông báo trong Cài đặt hệ thống — bật lên mới thấy push."
+            ensureChannel(appCtx)
+            val list = try { BongDaPlusScraper.fetchMemberNotifications(cookies) }
+            catch (_: Exception) { return "Lỗi mạng, thử lại sau." }
+            if (list.isEmpty()) return "Chưa có thông báo nào từ server."
+            val seen = try { auth.seenNotifKeys() } catch (_: Exception) { emptySet() }
+            if (seen.isEmpty()) {
+                auth.saveSeenNotifKeys(list.map { it.key }.toSet())
+                return "Đã lưu mốc ${list.size} thông báo — có cái mới sẽ push ngay."
+            }
+            val fresh = list.filter { it.key !in seen }.take(3)
+            for (n in fresh) {
+                val title = when (n.action) {
+                    "không thích" -> "👎 ${n.actor} không thích bình luận của bạn"
+                    "trả lời" -> "↩️ ${n.actor} đã trả lời bạn"
+                    else -> "👍 ${n.actor} đã thích bình luận của bạn"
+                }
+                show(
+                    appCtx, title, "${n.text}\n${n.time}",
+                    n.url, (n.key.hashCode() % 80000) + 40000
+                )
+            }
+            auth.saveSeenNotifKeys((list.map { it.key } + seen).take(60).toSet())
+            if (fresh.isEmpty()) "Không có gì mới — ${list.size} thông báo đều đã thấy."
+            else "Đã push ${fresh.size} thông báo mới."
+        } catch (_: Exception) { "Lỗi không rõ, thử lại sau." }
+    }
 }
 
 /**
