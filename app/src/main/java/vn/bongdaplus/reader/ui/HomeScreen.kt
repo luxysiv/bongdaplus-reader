@@ -90,12 +90,19 @@ fun HomeScreen(
                         Spacer(Modifier.height(8.dp))
                     }
                     item {
+                        // Chip giải chính (y menu web)
+                        val quickSlugs = listOf(
+                            "bong-da-viet-nam", "ngoai-hang-anh", "tin-chuyen-nhuong",
+                            "champions-league-cup-c1", "europa-league", "nations-league",
+                            "la-liga", "bundesliga"
+                        )
+                        val quick = quickSlugs.mapNotNull { s -> CATEGORIES.find { it.slug == s } }
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.padding(vertical = 4.dp)
                         ) {
-                            items(CATEGORIES.filter { it.slug != "tin-moi" }.take(8)) { c ->
+                            items(quick) { c ->
                                 FilterChip(
                                     selected = false, onClick = { onFeed(c.slug) },
                                     label = { Text(c.name) }

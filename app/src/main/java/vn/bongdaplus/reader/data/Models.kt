@@ -90,24 +90,85 @@ sealed interface LoginResult {
     data object NetworkError : LoginResult
 }
 
-/** Danh mục (slug lấy từ menu thật của bongdaplus.vn) */
+/** Danh mục (slug lấy từ menu thật của bongdaplus.vn, chỉ bóng đá) */
 data class Category(val name: String, val slug: String)
 
-val CATEGORIES = listOf(
-    Category("Mới nhất", "tin-moi"),
-    Category("Việt Nam", "bong-da-viet-nam"),
-    Category("Ngoại hạng Anh", "ngoai-hang-anh"),
-    Category("Chuyển nhượng", "tin-chuyen-nhuong"),
-    Category("Champions League", "champions-league-cup-c1"),
-    Category("La Liga", "la-liga"),
-    Category("Serie A", "serie-a"),
-    Category("Bundesliga", "bundesliga"),
-    Category("Ligue 1", "ligue-1"),
-    Category("Nhận định", "nhan-dinh-bong-da-tags"),
-    Category("Hậu trường", "hau-truong-bong-da"),
-    Category("Thế giới", "bong-da-the-gioi"),
-    Category("Video", "video"),
+/** Nhóm chuyên mục y menu hamburger của web (không bóng đá phủi/tennis/esports...). */
+data class CategoryGroup(val name: String, val cats: List<Category>)
+
+val CATEGORY_GROUPS = listOf(
+    CategoryGroup("Tin mới", listOf(
+        Category("Mới nhất", "tin-moi"),
+        Category("Điểm tin", "diem-tin"),
+        Category("Bóng đá & Cuộc sống", "bong-da-cuoc-song"),
+        Category("Big Story", "bigstory"),
+    )),
+    CategoryGroup("Bóng đá Việt Nam", listOf(
+        Category("Việt Nam", "bong-da-viet-nam"),
+        Category("Đội tuyển Việt Nam", "doi-tuyen-quoc-gia-viet-nam"),
+        Category("V.League", "v-league"),
+        Category("Cúp Quốc gia", "cup-quoc-gia"),
+        Category("Hạng Nhất", "hang-nhat-quoc-gia"),
+        Category("Bóng đá nữ", "bong-da-nu-viet-nam"),
+        Category("Futsal", "futsal"),
+        Category("CN V-League", "tin-chuyen-nhuong-v-league"),
+    )),
+    CategoryGroup("Bóng đá Anh", listOf(
+        Category("Anh", "bong-da-anh"),
+        Category("Ngoại hạng Anh", "ngoai-hang-anh"),
+        Category("Đội tuyển Anh", "doi-tuyen-anh"),
+        Category("FA Cup", "fa-cup"),
+        Category("League Cup", "cup-lien-doan-anh"),
+    )),
+    CategoryGroup("Cúp châu Âu", listOf(
+        Category("Champions League", "champions-league-cup-c1"),
+        Category("Europa League", "europa-league"),
+    )),
+    CategoryGroup("Bóng đá Tây Ban Nha", listOf(
+        Category("Tây Ban Nha", "bong-da-tay-ban-nha"),
+        Category("La Liga", "la-liga"),
+    )),
+    CategoryGroup("Bóng đá Đức", listOf(
+        Category("Bundesliga", "bundesliga"),
+    )),
+    CategoryGroup("Bóng đá Pháp", listOf(
+        Category("Pháp", "bong-da-phap"),
+        Category("Ligue 1", "ligue-1"),
+        Category("Cúp QG Pháp", "cup-quoc-gia-phap"),
+    )),
+    CategoryGroup("Bóng đá Italia", listOf(
+        Category("Italia", "bong-da-y"),
+        Category("Serie A", "serie-a"),
+        Category("Coppa Italia", "coppa-italia"),
+        Category("Đội tuyển Italia", "doi-tuyen-y"),
+    )),
+    CategoryGroup("Đội tuyển", listOf(
+        Category("World Cup", "world-cup"),
+        Category("Nations League", "nations-league"),
+        Category("Copa America", "copa-america"),
+    )),
+    CategoryGroup("Bóng đá khu vực", listOf(
+        Category("Asian Cup", "asian-cup"),
+        Category("AFF Cup", "aff-cup"),
+        Category("SEA Games", "sea-games"),
+    )),
+    CategoryGroup("Chuyển nhượng", listOf(
+        Category("Chuyển nhượng", "tin-chuyen-nhuong"),
+    )),
+    CategoryGroup("Chuyên đề", listOf(
+        Category("Nhận định", "nhan-dinh-bong-da-tags"),
+        Category("Hậu trường", "hau-truong-bong-da"),
+        Category("Thế giới", "bong-da-the-gioi"),
+    )),
+    CategoryGroup("Multimedia", listOf(
+        Category("Video", "video"),
+    )),
 )
+
+val CATEGORIES: List<Category> = CATEGORY_GROUPS.flatMap { it.cats }
+
+/** Chuyên mục bên lề: không đưa lên dòng Tin mới nhất trang chủ. */
+val HOME_EXCLUDED_SLUGS = setOf("nhan-dinh-bong-da-tags", "hau-truong-bong-da")
 
 /** Tên hiển thị của chuyên mục từ slug */
 fun catName(slug: String?): String =

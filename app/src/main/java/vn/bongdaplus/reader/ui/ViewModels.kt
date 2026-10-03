@@ -3,6 +3,7 @@ package vn.bongdaplus.reader.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -24,14 +25,17 @@ class HomeViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    val breaking: StateFlow<List<Article>> = _articles.map { it.take(3) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val breaking: StateFlow<List<Article>> = _articles.map { l ->
+        l.filter { it.category !in HOME_EXCLUDED_SLUGS }.take(3)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val featured: StateFlow<List<Article>> = _articles.map { l ->
-        (l.filter { !it.imageUrl.isNullOrBlank() }.take(5)).ifEmpty { l.take(5) }
+        val core = l.filter { it.category !in HOME_EXCLUDED_SLUGS }
+        (core.filter { !it.imageUrl.isNullOrBlank() }.take(5)).ifEmpty { core.take(5) }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val latest: StateFlow<List<Article>> = _articles.map { l ->
         val top = l.take(5).toSet()
-        l.filter { it !in top && !it.url.contains("/video/") }
+        l.filter { it !in top && !it.url.contains("/video/") &&
+            it.category !in HOME_EXCLUDED_SLUGS }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     /** Highlight & video trên trang chủ (lọc từ cùng 1 lần tải, không gọi thêm). */
     val videos: StateFlow<List<Article>> = _articles.map { l ->
@@ -43,8 +47,23 @@ class HomeViewModel : ViewModel() {
             if (isRefresh) _refreshing.value = true else _loading.value = true
             _error.value = null
             try {
-                val sec = BongDaPlusScraper.fetchHomeSections(cookiesOf(cookieProvider))
-                _articles.value = sec.articles
+                val ck = cookiesOf(cookieProvider)
+                val sec = BongDaPlusScraper.fetchHomeSections(ck)
+                val merged = sec.articles.toMutableList()
+                // Kéo thêm top bài các giải mới trong menu để chắc chắn lên trang chủ
+                // (chỉ bóng đá; song song để nhanh). Lỗi mạng ở giải nào thì bỏ qua.
+                try {
+                    val extra = listOf("europa-league", "nations-league", "bong-da-anh")
+                        .map { slug ->
+                            async {
+                                try { BongDaPlusScraper.fetchCategory(slug, ck).take(3) }
+                                catch (_: Exception) { emptyList() }
+                            }
+                        }.awaitAll().flatten()
+                    val ids = merged.map { it.id }.toSet()
+                    merged += extra.filter { it.id !in ids }
+                } catch (_: Exception) { }
+                _articles.value = merged
                 _mostRead.value = sec.mostRead
             } catch (e: Exception) {
                 _error.value = "Không tải được tin: ${e.message?.take(100)}"
