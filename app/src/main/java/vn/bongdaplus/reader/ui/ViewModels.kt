@@ -13,18 +13,35 @@ import vn.bongdaplus.reader.data.*
 private fun cookiesOf(provider: () -> Map<String, String>): Map<String, String> =
     try { provider() } catch (_: Exception) { emptyMap() }
 
-/** Trang chủ: 1 lần tải -> breaking + featured + latest + video + đọc nhiều */
+/**
+ * Trang Main TỰ CHỦ (không phụ thuộc luồng trang chủ web):
+ * gom song song trang chủ + top các chuyên mục chính thành 1 pool riêng,
+ * rồi dựng breaking/hero/latest/video/đọc nhiều/khối tiêu điểm.
+ */
 class HomeViewModel : ViewModel() {
     var cookieProvider: () -> Map<String, String> = { emptyMap() }
     private val _articles = MutableStateFlow<List<Article>>(emptyList())
     private val _mostRead = MutableStateFlow<List<Article>>(emptyList())
     val mostRead: StateFlow<List<Article>> = _mostRead
+    /** Khối tiêu điểm từng chuyên mục chính (slug -> top tin). */
+    private val _blocks = MutableStateFlow<List<Pair<String, List<Article>>>>(emptyList())
+    val blocks: StateFlow<List<Pair<String, List<Article>>>> = _blocks
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
+
+    /** Chuyên mục gom về Main (ngoài luồng trang chủ web). */
+    private val gatherSlugs = listOf(
+        "bong-da-viet-nam", "ngoai-hang-anh", "champions-league-cup-c1",
+        "tin-chuyen-nhuong", "europa-league", "video"
+    )
+    /** 3 khối tiêu điểm hiện tên ở Main. */
+    private val blockSlugs = listOf(
+        "ngoai-hang-anh", "champions-league-cup-c1", "bong-da-viet-nam"
+    )
 
     val breaking: StateFlow<List<Article>> = _articles.map { l ->
         l.filter { it.category !in HOME_EXCLUDED_SLUGS }.take(3)
@@ -38,7 +55,7 @@ class HomeViewModel : ViewModel() {
         l.filter { it !in top && !it.url.contains("/video/") &&
             it.category !in HOME_EXCLUDED_SLUGS }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    /** Highlight & video trên trang chủ (lọc từ cùng 1 lần tải, không gọi thêm). */
+    /** Highlight & video trên trang chủ (lọc từ pool Main, không gọi thêm). */
     val videos: StateFlow<List<Article>> = _articles.map { l ->
         l.filter { it.url.contains("/video/") }.take(8)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -49,20 +66,30 @@ class HomeViewModel : ViewModel() {
             _error.value = null
             try {
                 val ck = cookiesOf(cookieProvider)
+                // 1) Luồng trang chủ web (giữ để có tin tổng hợp + Đọc nhiều)
                 val sec = BongDaPlusScraper.fetchHomeSections(ck)
                 val merged = sec.articles.toMutableList()
-                // Kéo thêm top bài các giải mới trong menu để chắc chắn lên trang chủ
-                // (chỉ bóng đá; song song để nhanh). Lỗi mạng ở giải nào thì bỏ qua.
+                // 2) Song song top từng chuyên mục chính -> Main tự chủ, đầy tin
                 try {
-                    val extra = listOf("europa-league", "nations-league", "bong-da-anh")
-                        .map { slug ->
-                            async {
-                                try { BongDaPlusScraper.fetchCategory(slug, ck).take(3) }
-                                catch (_: Exception) { emptyList() }
-                            }
-                        }.awaitAll().flatten()
-                    val ids = merged.map { it.id }.toSet()
-                    merged += extra.filter { it.id !in ids }
+                    val perCat = gatherSlugs.map { slug ->
+                        async {
+                            slug to try {
+                                BongDaPlusScraper.fetchCategory(slug, ck).take(8)
+                            } catch (_: Exception) { emptyList() }
+                        }
+                    }.awaitAll()
+                    val ids = merged.map { it.id }.toMutableSet()
+                    for ((_, list) in perCat) {
+                        for (a in list) {
+                            if (ids.add(a.id)) merged += a
+                        }
+                        if (merged.size >= 90) break
+                    }
+                    _blocks.value = blockSlugs.mapNotNull { slug ->
+                        val list = perCat.firstOrNull { it.first == slug }?.second
+                            .orEmpty().take(4)
+                        if (list.isEmpty()) null else slug to list
+                    }
                 } catch (_: Exception) { }
                 _articles.value = merged
                 _mostRead.value = sec.mostRead

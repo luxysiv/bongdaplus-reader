@@ -33,6 +33,7 @@ fun HomeScreen(
     val latest by vm.latest.collectAsState()
     val videos by vm.videos.collectAsState()
     val mostRead by vm.mostRead.collectAsState()
+    val blocks by vm.blocks.collectAsState()
     val loading by vm.loading.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
     val err by vm.error.collectAsState()
@@ -106,7 +107,7 @@ fun HomeScreen(
                         }
                     }
                     item { SectionHeader("Tin mới nhất", "Xem thêm") { onFeed("tin-moi") } }
-                    items(latest.take(10), key = { it.id }) { a ->
+                    items(latest, key = { it.id }) { a ->
                         NewsRowCard(a, onClick = { onOpen(a) })
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 12.dp),
@@ -134,6 +135,19 @@ fun HomeScreen(
                         item { SectionHeader("🔥 Đọc nhiều") }
                         items(top5.size) { i ->
                             MostReadRow(i + 1, top5[i], onClick = { onOpen(top5[i]) })
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                    // Tiêu điểm từng chuyên mục chính (Main tự dựng, đầy tin)
+                    blocks.forEach { (slug, list) ->
+                        item {
+                            SectionHeader(catName(slug), "Xem thêm") { onFeed(slug) }
+                        }
+                        items(list, key = { it.id }) { a ->
+                            NewsRowCard(a, onClick = { onOpen(a) })
                             HorizontalDivider(
                                 modifier = Modifier.padding(horizontal = 12.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
