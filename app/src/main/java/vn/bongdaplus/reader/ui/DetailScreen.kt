@@ -48,6 +48,7 @@ fun DetailScreen(
     onOpen: (Article) -> Unit,
     onLogin: () -> Unit,
     onOpenDisplay: () -> Unit = {},
+    autoOpenComments: Boolean = false,
 ) {
     val vm: DetailViewModel = viewModel()
     val detail by vm.detail.collectAsState()
@@ -63,7 +64,8 @@ fun DetailScreen(
     val lineSpace by prefs.lineSpace.collectAsState(initial = 1f)
     val bodyFont = if (readerFont == "serif") FontFamily.Serif else FontFamily.Default
     var showReaderSheet by remember { mutableStateOf(false) }
-    var showComments by remember { mutableStateOf(false) }
+    // Đi từ thông báo bình luận -> mở thẳng khung bình luận
+    var showComments by remember(autoOpenComments) { mutableStateOf(autoOpenComments) }
     val myEmotion by vm.myEmotion.collectAsState()
     val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
 

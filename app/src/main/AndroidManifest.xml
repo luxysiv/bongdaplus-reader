@@ -31,5 +31,13 @@
                 <data android:scheme="bongdaplus" android:host="article" />
             </intent-filter>
         </activity>
+        <receiver
+            android:name=".notify.NotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="vn.bongdaplus.reader.SAVE" />
+                <action android:name="vn.bongdaplus.reader.SHARE" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

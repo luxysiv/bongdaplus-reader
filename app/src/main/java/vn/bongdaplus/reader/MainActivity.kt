@@ -23,6 +23,27 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
+
+/** Deep link mở bài viết từ thông báo (kèm cờ mở thẳng khung bình luận). */
+private data class DeepLink(val url: String, val comments: Boolean)
+
+private fun parseDeepLink(intent: android.content.Intent?): DeepLink? {
+    if (intent == null) return null
+    // 1) Extra từ PendingIntent của app
+    intent.getStringExtra("open_url")?.takeIf { it.isNotBlank() }?.let { url ->
+        return DeepLink(url, intent.getBooleanExtra("open_comments", false))
+    }
+    // 2) Deep link scheme bongdaplus://article?url=...(&comments=1)
+    try {
+        val d = intent.data
+        if (d != null && d.scheme == "bongdaplus") {
+            d.getQueryParameter("url")?.takeIf { it.isNotBlank() }?.let { url ->
+                return DeepLink(url, d.getQueryParameter("comments") == "1")
+            }
+        }
+    } catch (_: Exception) { }
+    return null
+}
 private val TABS = listOf(
     Tab("home", "Trang chủ", Icons.Default.Home),
     Tab("explore", "Chuyên mục", Icons.Default.List),
@@ -36,8 +57,18 @@ class MainActivity : ComponentActivity() {
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { }
 
+    /** Deep link từ thông báo (mở khi app đang chạy qua onNewIntent). */
+    private val _deepLink = kotlinx.coroutines.flow.MutableStateFlow<DeepLink?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        _deepLink.value = parseDeepLink(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (_deepLink.value == null) _deepLink.value = parseDeepLink(intent)
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
             android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -75,12 +106,18 @@ class MainActivity : ComponentActivity() {
                 val route = backStack?.destination?.route
                 val showBar = route in TABS.map { it.route }
 
-                // Mở từ notification
-                LaunchedEffect(Unit) {
-                    intent.getStringExtra("open_url")?.let { url ->
-                        val a = Article(BongDaPlusScraper.idFromUrl(url), "Tin mới", url)
+                // Mở từ notification / deep link (cả khi app đang chạy).
+                // Thông báo bình luận mang cờ open_comments -> mở thẳng khung bình luận.
+                val deep by _deepLink.collectAsState()
+                LaunchedEffect(deep) {
+                    deep?.let { d ->
+                        val a = Article(BongDaPlusScraper.idFromUrl(d.url), "Tin mới", d.url)
                         ArticleCache.put(a)
-                        nav.navigate("detail/${a.id}?url=${URLEncoder.encode(url, "UTF-8")}")
+                        nav.navigate(
+                            "detail/${a.id}?url=${URLEncoder.encode(d.url, "UTF-8")}" +
+                                if (d.comments) "&comments=1" else ""
+                        )
+                        _deepLink.value = null
                     }
                 }
 
@@ -136,10 +173,11 @@ class MainActivity : ComponentActivity() {
                                 onBack = { nav.popBackStack() })
                         }
                         composable(
-                            "detail/{id}?url={url}",
+                            "detail/{id}?url={url}&comments={comments}",
                             arguments = listOf(
                                 navArgument("id") { type = NavType.StringType },
-                                navArgument("url") { type = NavType.StringType }
+                                navArgument("url") { type = NavType.StringType },
+                                navArgument("comments") { type = NavType.StringType; defaultValue = "0" }
                             )
                         ) { e ->
                             val id = e.arguments?.getString("id") ?: ""
@@ -151,7 +189,8 @@ class MainActivity : ComponentActivity() {
                                 onBack = { nav.popBackStack() },
                                 onOpen = ::openArticle,
                                 onLogin = { nav.navigate("login") },
-                                onOpenDisplay = { nav.navigate("display") })
+                                onOpenDisplay = { nav.navigate("display") },
+                                autoOpenComments = e.arguments?.getString("comments") == "1")
                         }
                         composable("login") {
                             NativeLoginScreen(auth,
