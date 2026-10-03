@@ -386,6 +386,8 @@ class ScoresViewModel : ViewModel() {
 
     private var aggFix: List<ScoreMatch> = emptyList()
     private var aggRes: List<ScoreMatch> = emptyList()
+    /** Lịch full mùa đã tải theo giải (file -> matches), để ghim top 5 cả trái mùa. */
+    private var fullCache = mutableMapOf<String, List<ScoreMatch>>()
 
     private fun selected(): CompEntry? =
         _entries.value.firstOrNull { it.key == compKey.value }
@@ -415,8 +417,8 @@ class ScoresViewModel : ViewModel() {
             _error.value = null
             try {
                 val e = async { ScoresApi.compEntries() }
-                val f = async { ScoresApi.fixtures(null) }
-                val r = async { ScoresApi.results(null) }
+                val f = async { ScoresApi.fixtures() }
+                val r = async { ScoresApi.results() }
                 val list = e.await()
                 aggFix = f.await()
                 aggRes = r.await()
@@ -462,25 +464,64 @@ class ScoresViewModel : ViewModel() {
                 }
             }
             1 -> {
-                val list = (if (key == null) aggRes else aggRes.filter { it.compSlug == key })
-                    .distinctBy { it.id }
-                    .sortedByDescending { it.startTime }
-                _matches.value = list
-                if (list.isEmpty()) _error.value = "Chưa có kết quả."
+                refreshMatches(fromRes = true)
+                ensureFullSeason()
             }
             else -> {
-                val list = (if (key == null) aggFix else aggFix.filter { it.compSlug == key })
-                    .distinctBy { it.id }
-                _matches.value = list.sortedWith(
-                    compareBy<ScoreMatch> { if (!it.isUpcoming && !it.isFinished) 0 else 1 }
-                        .thenBy { it.startTime })
-                if (list.isEmpty()) _error.value = "Chưa có lịch thi đấu."
+                refreshMatches(fromRes = false)
+                ensureFullSeason()
             }
+        }
+    }
+
+    /** Lọc local tức thì từ lịch chung + full mùa của giải (nếu đã tải). */
+    private fun refreshMatches(fromRes: Boolean) {
+        val key = compKey.value
+        val en = selected()
+        fun keep(m: ScoreMatch): Boolean {
+            if (key == null) return true
+            if (m.compSlug == key) return true
+            // Lịch chung dùng slug nội bộ khác file giải (bundesliga vs bong-da-duc)
+            return en != null && m.compSlug in en.matchSlugs
+        }
+        val base = (if (fromRes) aggRes else aggFix).filter(::keep)
+        val full = if (key == null) emptyList()
+        else fullCache[en?.file].orEmpty()
+        val merged = (base + full).distinctBy { it.id }
+        val list = if (fromRes) merged.filter { it.isFinished }.sortedByDescending { it.startTime }
+        else merged.sortedWith(
+            compareBy<ScoreMatch> { if (!it.isUpcoming && !it.isFinished) 0 else 1 }
+                .thenBy { it.startTime })
+        _matches.value = list
+        if (list.isEmpty()) {
+            _error.value = if (fromRes) "Chưa có kết quả." else "Chưa có lịch thi đấu."
+        }
+    }
+
+    /**
+     * Tải nền lịch full mùa của giải đang chọn (ghim top 5 cả trái mùa).
+     * Xong thì trộn vào list hiện tại nếu user vẫn đang xem giải đó.
+     */
+    private fun ensureFullSeason() {
+        val en = selected() ?: return
+        val file = en.file
+        if (file.isBlank() || fullCache.containsKey(file)) return
+        viewModelScope.launch {
+            try {
+                val full = ScoresApi.compMatches(file)?.matches.orEmpty()
+                if (full.isEmpty()) return@launch
+                fullCache[file] = full
+                // Vẫn đang xem giải này và đang ở tab Lịch/KQ -> trộn thêm
+                if (compKey.value == en.key && tab.value != 2) {
+                    refreshMatches(fromRes = tab.value == 1)
+                }
+            } catch (_: Exception) { }
         }
     }
 }
 
-/** Lịch sử thông báo member thật (div#lstnoti) — ai thích/không thích bình luận của bạn */class NotifViewModel : ViewModel() {
+/** Lịch sử thông báo member thật (div#lstnoti) — ai thích/không thích bình luận của bạn */
+class NotifViewModel : ViewModel() {
     var cookieProvider: () -> Map<String, String> = { emptyMap() }
     private val _items = MutableStateFlow<List<MemberNotification>>(emptyList())
     val items: StateFlow<List<MemberNotification>> = _items

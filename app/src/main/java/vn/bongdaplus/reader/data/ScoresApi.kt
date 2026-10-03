@@ -13,7 +13,9 @@ data class Comp(
 )
 
 /** 1 giải đang có lịch (động theo thời gian thực: chỉ giải nào có trận mới hiện).
- * key: slug trong match (để lọc local); file: slug tournaments (để gọi BXH). */
+ * key: file giải nếu join được (để khỏi trùng mục), không thì slug trong lịch;
+ * matchSlugs: mọi slug lịch từng thấy của giải (lịch chung dùng slug nội bộ
+ * khác file giải, vd bundesliga vs bong-da-duc). */
 data class CompEntry(
     val key: String,
     val file: String,
@@ -22,6 +24,7 @@ data class CompEntry(
     val live: Int,
     val total: Int,
     val soon: String,
+    val matchSlugs: Set<String> = emptySet(),
 )
 
 /** 1 trận: lịch (status=0) / live / xong (status=100, play_time=FT). */
@@ -145,54 +148,114 @@ object ScoresApi {
     fun shortName(slug: String, fallback: String): String =
         VI_NAMES[slug] ?: fallback.ifBlank { slug }
 
+    /** 5 giải hàng đầu châu Âu: luôn ghim đầu danh sách (kể cả trái mùa). */
+    val TOP5 = listOf(
+        "bong-da-anh",
+        "bong-da-tay-ban-nha",
+        "bong-da-y",
+        "bong-da-duc",
+        "bong-da-phap",
+    )
+
     /**
-     * Dựng chip giải ĐỘNG theo thời gian thực: join tournaments.json với lịch
-     * chung qua tournament_id. Giải nào đang/không có trận thì không hiện chip
-     * (Euro/World Cup chỉ xuất hiện đúng mùa giải). Đang đá xếp trước + đếm live.
+     * Dựng chip giải: 5 giải hàng đầu châu Âu GHIM sẵn (luôn hiện cả trái mùa),
+     * tiếp theo là các giải động đang có trận (Euro/World Cup chỉ hiện đúng mùa).
+     * Join tournaments.json với lịch chung qua tournament_id; key = file giải
+     * nếu join được (để khỏi trùng mục), không thì slug trong lịch.
      */
     suspend fun compEntries(): List<CompEntry> = withContext(Dispatchers.IO) {
         try {
             // Lấy tournaments kèm id để join với lịch qua tournament_id
             val arr = getArr("tournaments") ?: return@withContext emptyList()
             val tourById = mutableMapOf<String, Comp>()
+            val tourByFile = mutableMapOf<String, Comp>()
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
                 val id = o.optString("id").trim()
                 val file = o.optString("file").trim()
-                if (id.isBlank() || file.isBlank()) continue
+                if (file.isBlank()) continue
                 val name = o.optString("rename").ifBlank { o.optString("name") }.trim().ifBlank { file }
-                tourById[id] = Comp(file, name.nfcVi().unescapeHtml(), o.optBoolean("has_rank", false))
+                val c = Comp(file, name.nfcVi().unescapeHtml(), o.optBoolean("has_rank", false))
+                if (id.isNotBlank()) tourById[id] = c
+                tourByFile[file] = c
             }
-            val fixArr = getArr("lich-thi-dau-bong-da") ?: return@withContext emptyList()
             data class Acc(var file: String, var name: String, var hasRank: Boolean,
-                           var live: Int, var total: Int, var soon: String)
+                           var live: Int, var total: Int, var soon: String,
+                           val slugs: MutableSet<String> = mutableSetOf())
             val map = LinkedHashMap<String, Acc>()
-            for (i in 0 until fixArr.length()) {
-                val o = fixArr.optJSONObject(i) ?: continue
-                val t = o.optJSONObject("tournament") ?: continue
-                val key = t.optString("tournament_slug").trim()
-                if (key.isBlank()) continue
-                val tour = tourById[t.optString("tournament_id")]
-                val a = map.getOrPut(key) {
-                    Acc(tour?.file.orEmpty(),
-                        shortName(tour?.file.orEmpty().ifBlank { key },
-                            tour?.name ?: t.optString("tournament_name")),
-                        tour?.hasRank == true, 0, 0, "9")
+            try {
+                val fixArr = getArr("lich-thi-dau-bong-da")
+                if (fixArr != null) for (i in 0 until fixArr.length()) {
+                    val o = fixArr.optJSONObject(i) ?: continue
+                    val t = o.optJSONObject("tournament") ?: continue
+                    val tour = tourById[t.optString("tournament_id")]
+                    // Key = file giải nếu join được, khỏi trùng với mục ghim
+                    val fslug = t.optString("tournament_slug").trim()
+                    val key = tour?.file ?: fslug
+                    if (key.isBlank()) continue
+                    val a = map.getOrPut(key) {
+                        Acc(tour?.file.orEmpty(),
+                            shortName(tour?.file ?: key,
+                                tour?.name ?: t.optString("tournament_name")),
+                            tour?.hasRank == true, 0, 0, "9")
+                    }
+                    if (fslug.isNotBlank()) a.slugs += fslug
+                    val st = o.optInt("status")
+                    if (st != 0 && st != 100) a.live++
+                    a.total++
+                    val s = o.optString("start_time")
+                    if (s.isNotBlank() && (a.soon == "9" || s < a.soon)) a.soon = s
                 }
-                if (tour != null && a.file.isBlank()) {
-                    a.file = tour.file; a.name = shortName(tour.file, tour.name); a.hasRank = tour.hasRank
-                }
-                val st = o.optInt("status")
-                if (st != 0 && st != 100) a.live++
-                a.total++
-                val s = o.optString("start_time")
-                if (s.isNotBlank() && (a.soon == "9" || s < a.soon)) a.soon = s
+            } catch (_: Exception) { }
+            // 5 giải top đầu luôn ghim (kể cả trái mùa chưa có lịch)
+            val out = mutableListOf<CompEntry>()
+            for (file in TOP5) {
+                val dyn = map.remove(file)
+                val tour = tourByFile[file]
+                out += CompEntry(
+                    key = file, file = file,
+                    name = shortName(file, tour?.name ?: dyn?.name ?: file),
+                    hasRank = tour?.hasRank ?: (dyn?.hasRank == true),
+                    live = dyn?.live ?: 0, total = dyn?.total ?: 0,
+                    soon = dyn?.soon ?: "9",
+                    matchSlugs = dyn?.slugs ?: emptySet(),
+                )
             }
-            map.map { (key, a) ->
-                CompEntry(key, a.file, a.name.nfcVi().unescapeHtml(), a.hasRank, a.live, a.total, a.soon)
+            // Còn lại: giải động đang có trận, live trước
+            out += map.map { (key, a) ->
+                CompEntry(key, a.file, a.name.nfcVi().unescapeHtml(), a.hasRank,
+                    a.live, a.total, a.soon, a.slugs)
             }.sortedWith(compareByDescending<CompEntry> { it.live }
                 .thenBy { it.soon }.thenByDescending { it.total })
+            out
         } catch (_: Exception) { emptyList() }
+    }
+
+    /** Lịch + kết quả FULL mùa của 1 giải ({file}-matches.json: {days, matches, ...}). */
+    data class CompMatches(
+        val name: String,
+        val slug: String,
+        val logo: String?,
+        val hasRank: Boolean,
+        val matches: List<ScoreMatch>,
+    )
+
+    suspend fun compMatches(file: String): CompMatches? = withContext(Dispatchers.IO) {
+        try {
+            val o = getObj("$file-matches") ?: return@withContext null
+            val arr = o.optJSONArray("matches") ?: return@withContext null
+            val list = mutableListOf<ScoreMatch>()
+            for (i in 0 until arr.length()) {
+                parseMatch(arr.optJSONObject(i) ?: continue)?.let { list += it }
+            }
+            CompMatches(
+                name = shortName(file, o.optString("tournament_name")).nfcVi().unescapeHtml(),
+                slug = o.optString("tournament_slug").ifBlank { file },
+                logo = o.optString("tournament_logo").takeIf { it.isNotBlank() }?.let { LOGO + it },
+                hasRank = o.optBoolean("has_rank", false),
+                matches = list,
+            )
+        } catch (_: Exception) { null }
     }
 
     private fun parseMatch(o: JSONObject): ScoreMatch? {
@@ -218,13 +281,12 @@ object ScoresApi {
     }
 
     /**
-     * Lịch thi đấu: slug=null -> tất cả (lich-thi-dau-bong-da.json),
-     * có slug -> {slug}-matches.json. Sắp xếp: đang đá trước, rồi tới giờ.
+     * Lịch thi đấu chung TẤT CẢ các giải (lich-thi-dau-bong-da.json).
+     * Sắp xếp: đang đá trước, rồi tới giờ. Lọc theo giải thì dùng matchSlugs.
      */
-    suspend fun fixtures(slug: String?): List<ScoreMatch> = withContext(Dispatchers.IO) {
+    suspend fun fixtures(): List<ScoreMatch> = withContext(Dispatchers.IO) {
         try {
-            val arr = getArr(if (slug.isNullOrBlank()) "lich-thi-dau-bong-da" else "$slug-matches")
-                ?: return@withContext emptyList()
+            val arr = getArr("lich-thi-dau-bong-da") ?: return@withContext emptyList()
             val out = mutableListOf<ScoreMatch>()
             for (i in 0 until arr.length()) {
                 parseMatch(arr.optJSONObject(i) ?: continue)?.let { out += it }
@@ -235,19 +297,16 @@ object ScoresApi {
     }
 
     /**
-     * Kết quả: slug=null -> ket-qua-bong-da.json,
-     * có slug -> lọc trận đã đá xong từ {slug}-matches.json. Mới nhất trước.
+     * Kết quả chung TẤT CẢ các giải (ket-qua-bong-da.json). Mới nhất trước.
      */
-    suspend fun results(slug: String?): List<ScoreMatch> = withContext(Dispatchers.IO) {
+    suspend fun results(): List<ScoreMatch> = withContext(Dispatchers.IO) {
         try {
-            val list = if (slug.isNullOrBlank()) {
-                val arr = getArr("ket-qua-bong-da") ?: return@withContext emptyList()
-                List(arr.length()) { parseMatch(arr.optJSONObject(it) ?: JSONObject()) }
-                    .filterNotNull()
-            } else {
-                fixtures(slug).filter { it.isFinished }
+            val arr = getArr("ket-qua-bong-da") ?: return@withContext emptyList()
+            val out = mutableListOf<ScoreMatch>()
+            for (i in 0 until arr.length()) {
+                parseMatch(arr.optJSONObject(i) ?: continue)?.let { out += it }
             }
-            list.sortedByDescending { it.startTime }
+            out.sortedByDescending { it.startTime }
         } catch (_: Exception) { emptyList() }
     }
 
