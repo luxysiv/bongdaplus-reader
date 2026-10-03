@@ -640,19 +640,48 @@ object BongDaPlusScraper {
             false
         }
 
-    /** Cảm xúc bài viết của chính member (0 = chưa chọn). */
+    /** Cảm xúc bài viết của chính member (0 = chưa chọn). Thử cả 2 objectType. */
     suspend fun fetchMyNewsEmotion(objectId: String, objectType: String,
                                    cookies: Map<String, String>): Int? =
         withContext(Dispatchers.IO) {
             if (objectId.isBlank() || cookies.isEmpty()) return@withContext null
-            try {
-                val bust = System.currentTimeMillis()
-                val body = Http.get("$BASE/getNewsEmotion/$objectId/$objectType?t=$bust")?.html
-                    ?: Jsoup.connect("$BASE/getNewsEmotion/$objectId/$objectType")
-                        .userAgent(UA).timeout(15000).cookies(cookies)
-                        .ignoreContentType(true).get().body().text()
-                JSONObject(body).optJSONObject("logNewsEmotion")?.optInt("emotionType", 0)
-            } catch (_: Exception) { null }
+            val types = listOf(objectType, if (objectType == "1") "0" else "1").distinct()
+            for (t in types) {
+                try {
+                    val bust = System.currentTimeMillis()
+                    val body = Http.get("$BASE/getNewsEmotion/$objectId/$t?t=$bust",
+                        "$BASE/", xhr = true)?.html
+                        ?: Jsoup.connect("$BASE/getNewsEmotion/$objectId/$t")
+                            .userAgent(UA).timeout(15000).cookies(cookies)
+                            .ignoreContentType(true).get().body().text()
+                    val o = JSONObject(body.trim())
+                    var log: JSONObject? = o.optJSONObject("logNewsEmotion")
+                    if (log == null) {
+                        val keys = o.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            if (k.lowercase() == "lognewsemotion") {
+                                log = o.optJSONObject(k); break
+                            }
+                        }
+                    }
+                    if (log != null) {
+                        var emo = 0
+                        val keys = log.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            if (k.lowercase() == "emotiontype") {
+                                emo = log.optInt(k, log.optString(k, "0")
+                                    .filter { it.isDigit() }.toIntOrNull() ?: 0)
+                                break
+                            }
+                        }
+                        // Chỉ tin khi endpoint này có số liệu (tránh type sai trả rỗng đè)
+                        if (emo != 0) return@withContext emo
+                    }
+                } catch (_: Exception) { }
+            }
+            0
         }
 
     /**
@@ -661,24 +690,43 @@ object BongDaPlusScraper {
      * Dùng để tô sáng nút 👍👎 của chính member.
      */
     suspend fun getMyCommentVotes(objectId: String, objectType: String,
-                                  cookies: Map<String, String>): Map<String, Int> =
+                                   cookies: Map<String, String>): Map<String, Int> =
         withContext(Dispatchers.IO) {
             if (objectId.isBlank() || cookies.isEmpty()) return@withContext emptyMap()
-            try {
-                val bust = System.currentTimeMillis()
-                val body = Http.get("$BASE/GetCommentEmotion/$objectId/$objectType?t=$bust")?.html
-                    ?: Jsoup.connect("$BASE/GetCommentEmotion/$objectId/$objectType")
-                        .userAgent(UA).timeout(15000).cookies(cookies)
-                        .ignoreContentType(true).get().body().text()
-                val arr = try { org.json.JSONArray(body) } catch (_: Exception) { return@withContext emptyMap() }
-                val out = mutableMapOf<String, Int>()
-                for (i in 0 until arr.length()) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    val cid = o.optString("commentId").ifBlank { o.optString("commentid") }
-                    if (cid.isNotBlank()) out[cid] = o.optInt("emotionType", o.optInt("emotiontype"))
-                }
-                out
-            } catch (_: Exception) { emptyMap() }
+            val out = mutableMapOf<String, Int>()
+            // Thử cả 2 objectType rồi gộp (app có thể lệch type so với input trang)
+            val types = listOf(objectType, if (objectType == "1") "0" else "1").distinct()
+            for (t in types) {
+                try {
+                    val bust = System.currentTimeMillis()
+                    val body = Http.get("$BASE/GetCommentEmotion/$objectId/$t?t=$bust",
+                        "$BASE/", xhr = true)?.html
+                        ?: Jsoup.connect("$BASE/GetCommentEmotion/$objectId/$t")
+                            .userAgent(UA).timeout(15000).cookies(cookies)
+                            .ignoreContentType(true).get().body().text()
+                    val arr = try { org.json.JSONArray(body.trim()) }
+                    catch (_: Exception) { continue }
+                    for (i in 0 until arr.length()) {
+                        val o = arr.optJSONObject(i) ?: continue
+                        // So tên field không phân biệt hoa/thường, id chịu số lẫn chuỗi
+                        var cid = ""
+                        var emo = 0
+                        val keys = o.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            when (k.lowercase()) {
+                                "commentid", "id" -> cid = o.opt(k)?.toString()
+                                    ?.takeIf { it != "null" }.orEmpty()
+                                "emotiontype", "emotion", "type" ->
+                                    emo = o.optInt(k, o.optString(k, "0").filter { it.isDigit() }
+                                        .toIntOrNull() ?: 0)
+                            }
+                        }
+                        if (cid.isNotBlank()) out[cid] = emo
+                    }
+                } catch (_: Exception) { }
+            }
+            out
         }
 
     /**
