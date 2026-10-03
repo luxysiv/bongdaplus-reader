@@ -8,8 +8,11 @@ import okhttp3.CookieJar
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import java.util.concurrent.TimeUnit
 
@@ -90,13 +93,25 @@ object Http {
                 (code == 401 || code == 403)
     }
 
+    private val FORM_CT: MediaType? =
+        MediaType.parse("application/x-www-form-urlencoded; charset=UTF-8")
+
     suspend fun postForm(
         url: String, params: Map<String, String>, referer: String,
     ): PostResult? = withContext(Dispatchers.IO) {
         try {
-            val form = FormBody.Builder()
-            params.forEach { (k, v) -> form.add(k, v) }
-            val req = Request.Builder().url(url).post(form.build())
+            // Web (jQuery $.post) gửi POST kèm Content-Length. Reverse-proxy của
+            // BongdaPlus trả 411 "Length Required" nếu POST thiếu Content-Length,
+            // nên body rỗng (vote) phải là body 0 byte có Length, không phải FormBody
+            // rỗng (có thể không set Length). Có dữ liệu thì giữ FormBody như cũ.
+            val body: RequestBody = if (params.isEmpty()) {
+                "".toRequestBody(FORM_CT)
+            } else {
+                val form = FormBody.Builder()
+                params.forEach { (k, v) -> form.add(k, v) }
+                form.build()
+            }
+            val req = Request.Builder().url(url).post(body)
                 .header("User-Agent", UA)
                 .header("Accept", "*/*")
                 .header("X-Requested-With", "XMLHttpRequest")

@@ -557,54 +557,62 @@ object BongDaPlusScraper {
      * sai vì số đếm và API trạng thái đều bị server cache — nên bỏ hẳn.
      * UI cập nhật lạc quan rồi tải lại để chốt theo server.
      */
+    /**
+     * @return mã HTTP server trả về: 200 = đã nhận; khác = lỗi (411=thiếu
+     * Content-Length, 401/403=thiếu phiên...); 0 = lỗi mạng / Jsoup fallback thất bại.
+     */
     suspend fun setCommentEmotion(objectId: String, commentId: String, like: Boolean,
                                    cookies: Map<String, String>,
                                    pageUrl: String = "$BASE/",
-                                   objectType: String = "1"): Boolean =
+                                   objectType: String = "1"): Int =
         withContext(Dispatchers.IO) {
             val type = if (like) "1" else "7"
             try {
                 val r = Http.postForm("$BASE/setCommentEmotion/$objectId/$commentId/$type",
-                    emptyMap(), pageUrl) ?: return@withContext jsoupVoteOnce(
-                    "$BASE/setCommentEmotion/$objectId/$commentId/$type", cookies, pageUrl)
-                if (r.bouncedToLogin() || r.code != 200) return@withContext false
-                true
+                    emptyMap(), pageUrl)
+                if (r != null) {
+                    if (r.bouncedToLogin()) return@withContext 401
+                    return@withContext r.code
+                }
+                jsoupVoteOnce("$BASE/setCommentEmotion/$objectId/$commentId/$type", cookies, pageUrl)
             } catch (_: Exception) {
-                jsoupVoteOnce(
-                    "$BASE/setCommentEmotion/$objectId/$commentId/$type", cookies, pageUrl)
+                jsoupVoteOnce("$BASE/setCommentEmotion/$objectId/$commentId/$type", cookies, pageUrl)
             }
         }
 
-    /** Jsoup thử POST vote 1 lần duy nhất (chỉ khi OkHttp lỗi mạng). */
+    /** Jsoup thử POST vote 1 lần duy nhất (chỉ khi OkHttp lỗi mạng). @return 200 hoặc 0 */
     private suspend fun jsoupVoteOnce(
         url: String, cookies: Map<String, String>, referer: String,
-    ): Boolean = withContext(Dispatchers.IO) {
-        if (cookies.isEmpty()) return@withContext false
+    ): Int = withContext(Dispatchers.IO) {
+        if (cookies.isEmpty()) return@withContext 0
         try {
             val res = Jsoup.connect(url)
                 .userAgent(UA).timeout(15000).cookies(cookies)
                 .header("X-Requested-With", "XMLHttpRequest")
                 .header("Origin", BASE).referrer(referer)
                 .ignoreContentType(true).post()
-            !isLoginPage(res.body().text())
-        } catch (_: Exception) { false }
+            if (isLoginPage(res.body().text())) 0 else res.statusCode()
+        } catch (_: Exception) { 0 }
     }
 
     /**
      * Cảm xúc bài viết: 1=Thích, 2=Tim, 4=Wow. Web toggle (bấm lại = gỡ) và chỉ
      * tin HTTP 200 — app y hệt, không xác minh đọc lại (dính cache server).
+     * @return mã HTTP: 200 = đã nhận; 0 = lỗi mạng.
      */
     suspend fun setNewsEmotion(objectId: String, objectType: String, emotionType: Int,
                                  cookies: Map<String, String>,
-                                 pageUrl: String = "$BASE/"): Boolean =
+                                 pageUrl: String = "$BASE/"): Int =
         withContext(Dispatchers.IO) {
             try {
                 val r = Http.postForm("$BASE/setNewsEmotion/$objectId/$objectType/$emotionType",
                     emptyMap(), pageUrl)
-                    ?: return@withContext jsoupVoteOnce(
-                        "$BASE/setNewsEmotion/$objectId/$objectType/$emotionType", cookies, pageUrl)
-                if (r.bouncedToLogin() || r.code != 200) return@withContext false
-                true
+                if (r != null) {
+                    if (r.bouncedToLogin()) return@withContext 401
+                    return@withContext r.code
+                }
+                jsoupVoteOnce(
+                    "$BASE/setNewsEmotion/$objectId/$objectType/$emotionType", cookies, pageUrl)
             } catch (_: Exception) {
                 jsoupVoteOnce(
                     "$BASE/setNewsEmotion/$objectId/$objectType/$emotionType", cookies, pageUrl)

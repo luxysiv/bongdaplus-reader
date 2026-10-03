@@ -206,15 +206,15 @@ class DetailViewModel : ViewModel() {
         _myVotes.value = cur
         // 2) POST 1 lần (web tin 200). Không reload — reload dính cache là lệch.
         viewModelScope.launch {
-            val ok = try {
+            val code = try {
                 BongDaPlusScraper.setCommentEmotion(
                     d.objectId, commentId, like, cookiesOf(cookieProvider),
                     d.article.url, d.objectType)
-            } catch (_: Exception) { false }
-            if (!ok) {
+            } catch (_: Exception) { 0 }
+            if (code != 200) {
                 _comments.value = snapComments
                 _myVotes.value = snapVotes
-                _sendMsg.value = "👍/👎 thất bại — chưa gửi được tới server, thử lại."
+                _sendMsg.value = "👍/👎 thất bại — HTTP $code, thử lại."
             }
         }
     }
@@ -249,15 +249,15 @@ class DetailViewModel : ViewModel() {
         _detail.value = d.copy(emotion = e)
         // 2) POST 1 lần (web tin 200). Không reload.
         viewModelScope.launch {
-            val ok = try {
+            val code = try {
                 BongDaPlusScraper.setNewsEmotion(
                     d.objectId, d.objectType, emotionType,
                     cookiesOf(cookieProvider), d.article.url)
-            } catch (_: Exception) { false }
-            if (!ok) {
+            } catch (_: Exception) { 0 }
+            if (code != 200) {
                 _detail.value = d.copy(emotion = prevEmotion)
                 _myEmotion.value = prevMyEmo
-                _sendMsg.value = "Cảm xúc thất bại — chưa gửi được tới server, thử lại."
+                _sendMsg.value = "Cảm xúc thất bại — HTTP $code, thử lại."
             }
         }
     }
