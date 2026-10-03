@@ -116,6 +116,7 @@ fun AccountScreen(
     val notifyCmt by auth.notifyComments.collectAsState(initial = true)
     val themeMode by prefs.themeMode.collectAsState(initial = "system")
     val fontScalePref by prefs.fontScale.collectAsState(initial = 1f)
+    val menuGroups by MenuRepository.groups.collectAsState()
     val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
@@ -157,6 +158,7 @@ fun AccountScreen(
         }
     }
     LaunchedEffect(logged) { reloadMine() }
+    LaunchedEffect(Unit) { MenuRepository.refresh() }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("Tài khoản", fontWeight = FontWeight.Bold) })
@@ -344,26 +346,33 @@ fun AccountScreen(
                     )
                 }
             }
-            // ===== Chuyên mục theo dõi =====
+            // ===== Chuyên mục theo dõi (menu động theo web) =====
             item { AccountSection("Chuyên mục theo dõi (${follows.size})") }
             item {
                 GroupCard {
-                    LazyRow(
-                        contentPadding = PaddingValues(16.dp, 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(CATEGORIES) { c ->
-                            val on = follows.contains(c.slug)
-                            FilterChip(
-                                selected = on,
-                                onClick = {
-                                    scope.launch {
-                                        auth.setFollow(if (on) follows - c.slug else follows + c.slug)
-                                    }
-                                },
-                                label = { Text(c.name) },
-                                leadingIcon = if (on) ({ Icon(Icons.Default.Check, null) }) else null
-                            )
+                    menuGroups.forEach { g ->
+                        Text(g.name.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(16.dp, 8.dp, 16.dp, 0.dp))
+                        LazyRow(
+                            contentPadding = PaddingValues(16.dp, 4.dp, 16.dp, 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(g.cats) { c ->
+                                val on = follows.contains(c.slug)
+                                FilterChip(
+                                    selected = on,
+                                    onClick = {
+                                        scope.launch {
+                                            auth.setFollow(if (on) follows - c.slug else follows + c.slug)
+                                        }
+                                    },
+                                    label = { Text(c.name) },
+                                    leadingIcon = if (on) ({ Icon(Icons.Default.Check, null) }) else null
+                                )
+                            }
                         }
                     }
                 }

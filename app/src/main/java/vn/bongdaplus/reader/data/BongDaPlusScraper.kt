@@ -220,6 +220,62 @@ object BongDaPlusScraper {
         } catch (_: Exception) { emptyList() }
     }
 
+    /**
+     * Menu chuyên mục ĐỘNG đọc từ mega-menu của web (thay menu cứng trong app).
+     * Chỉ giữ feed bóng đá: loại trang tiện ích (?/login...), link ngoài,
+     * bài viết lẻ (.html) và các mục phi bóng đá / đã loại khỏi app.
+     */
+    private val MENU_BLOCKED = setOf(
+        "futsal", "nhan-dinh-bong-da-tags", "hau-truong-bong-da", "bong-da-cuoc-song",
+        "tennis", "esports", "the-thao", "thiet-bi-so", "xe-co", "thi-truong",
+        "cong-nghe", "ngoi-sao-showbiz", "goc-check-var", "phui",
+        "premium", "lich-thi-dau-bong-da", "ket-qua-bong-da", "bang-xep-hang-bong-da",
+        "tim-kiem", "dang-nhap", "dang-ky",
+    )
+
+    private fun menuSlug(href: String): String? {
+        var h = href.trim()
+        if (h.isEmpty() || h.startsWith("#")) return null
+        if (h.startsWith("http")) {
+            if (!h.contains("bongdaplus.vn")) return null
+            h = try { java.net.URI(h).path.orEmpty() } catch (_: Exception) { return null }
+        } else if (!h.startsWith("/")) return null
+        if (h.contains(".html") || h.contains("?")) return null
+        val slug = h.trim { it == '/' }.trim()
+        if (slug.isEmpty() || slug.contains("/") || slug in MENU_BLOCKED) return null
+        return slug
+    }
+
+    suspend fun fetchMenuGroups(cookies: Map<String, String> = emptyMap()): List<CategoryGroup> =
+        withContext(Dispatchers.IO) {
+            try {
+                val doc = loadDoc("$BASE/", cookies)
+                val out = mutableListOf<CategoryGroup>()
+                val seen = mutableSetOf<String>()
+                fun catOf(a: org.jsoup.nodes.Element): Category? {
+                    val slug = menuSlug(a.attr("href")) ?: return null
+                    if (!seen.add(slug)) return null
+                    val name = a.text().trim().nfc().ifBlank { return null }
+                    if (name.length > 32) return null
+                    return Category(name, slug)
+                }
+                // Mục nổi bật hàng đầu (Mới nhất, Multimedia...)
+                val top = doc.select("div.mega-menu ul.bar > li > a.caption").mapNotNull(::catOf)
+                    .take(8)
+                if (top.isNotEmpty()) out += CategoryGroup("Nổi bật", top)
+                // Từng cụm ul.lst: a.fst làm tên nhóm
+                for (lst in doc.select("div.mega-menu ul.lst")) {
+                    val items = lst.select("a[href]").mapNotNull(::catOf).take(12)
+                    if (items.isEmpty()) continue
+                    val head = lst.selectFirst("a.fst")?.text()?.trim()?.nfc()
+                        .orEmpty().takeIf { it.length in 2..32 } ?: "Chuyên mục"
+                    out += CategoryGroup(head, items)
+                    if (out.size >= 16) break
+                }
+                out.filter { it.cats.isNotEmpty() }.take(16)
+            } catch (_: Exception) { emptyList() }
+        }
+
     // ---------- Chi tiết: parse native blocks từ div.content ----------
 
     private fun parseBlocks(bodyEl: Element): List<ContentBlock> {

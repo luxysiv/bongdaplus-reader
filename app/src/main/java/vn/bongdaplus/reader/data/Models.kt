@@ -110,7 +110,6 @@ val CATEGORY_GROUPS = listOf(
         Category("Cúp Quốc gia", "cup-quoc-gia"),
         Category("Hạng Nhất", "hang-nhat-quoc-gia"),
         Category("Bóng đá nữ", "bong-da-nu-viet-nam"),
-        Category("Futsal", "futsal"),
         Category("CN V-League", "tin-chuyen-nhuong-v-league"),
     )),
     CategoryGroup("Bóng đá Anh", listOf(
@@ -165,9 +164,15 @@ val CATEGORIES: List<Category> = CATEGORY_GROUPS.flatMap { it.cats }
 /** Chuyên mục bên lề: không đưa lên dòng Tin mới nhất trang chủ. */
 val HOME_EXCLUDED_SLUGS = setOf("nhan-dinh-bong-da-tags", "hau-truong-bong-da")
 
-/** Tên hiển thị của chuyên mục từ slug */
-fun catName(slug: String?): String =
-    CATEGORIES.find { it.slug == slug }?.name ?: "Bóng đá"
+/** Tên hiển thị của chuyên mục: tĩnh -> menu động -> đoán từ slug. */
+fun catName(slug: String?): String {
+    if (slug.isNullOrBlank()) return "Bóng đá"
+    CATEGORIES.find { it.slug == slug }?.name?.let { return it }
+    MenuRepository.nameMap[slug]?.let { return it }
+    return slug.split("-").joinToString(" ") { w ->
+        w.replaceFirstChar { c -> c.uppercase() }
+    }
+}
 
 /** Chuẩn hóa Unicode NFC (sửa lỗi font tiếng Việt khi text chứa dấu tổ hợp rời). */
 fun String.nfcVi(): String = try {

@@ -101,6 +101,32 @@ class HomeViewModel : ViewModel() {
     }
 }
 
+/** Tab Chuyên mục: menu động theo web (rớt mạng dùng menu tĩnh dự phòng). */
+class ExploreViewModel : ViewModel() {
+    val groups: StateFlow<List<CategoryGroup>> = MenuRepository.groups
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+
+    init {
+        load()
+    }
+
+    fun load(force: Boolean = false) {
+        viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
+            try {
+                MenuRepository.refresh(force)
+            } catch (e: Exception) {
+                _error.value = "Không tải được menu: ${e.message?.take(80)}"
+            }
+            _loading.value = false
+        }
+    }
+}
+
 /** Feed 1 chuyên mục (kéo xuống tự tải thêm như nút "Xem thêm" trên web) */
 class FeedViewModel(val slug: String) : ViewModel() {
     var cookieProvider: () -> Map<String, String> = { emptyMap() }

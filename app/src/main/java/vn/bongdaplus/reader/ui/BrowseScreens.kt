@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
@@ -28,42 +29,54 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import vn.bongdaplus.reader.data.*
 
-// ---------- Tab Chuyên mục: nhóm y menu hamburger của web (chỉ bóng đá) ----------
+// ---------- Tab Chuyên mục: menu ĐỘNG theo web (chỉ bóng đá) ----------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(onFeed: (String) -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text("Chuyên mục", fontWeight = FontWeight.Bold) }) }) { pad ->
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.padding(pad).fillMaxSize(),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            CATEGORY_GROUPS.forEach { g ->
-                item(span = { GridItemSpan(2) }) {
-                    Text(g.name.uppercase(), fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 6.dp))
-                }
-                items(g.cats) { c ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().height(72.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
-                        onClick = { onFeed(c.slug) }
-                    ) {
-                        Row(
-                            Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+    val vm: ExploreViewModel = viewModel()
+    val groups by vm.groups.collectAsState()
+    val loading by vm.loading.collectAsState()
+    Scaffold(topBar = {
+        TopAppBar(
+            title = { Text("Chuyên mục", fontWeight = FontWeight.Bold) },
+            actions = { IconButton(onClick = { vm.load(force = true) }) { Icon(Icons.Default.Refresh, "Tải lại menu") } }
+        )
+    }) { pad ->
+        if (loading && groups.isEmpty()) {
+            Box(Modifier.padding(pad)) { LoadingSkeleton(6) }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.padding(pad).fillMaxSize(),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                groups.forEach { g ->
+                    item(span = { GridItemSpan(2) }) {
+                        Text(g.name.uppercase(), fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 6.dp))
+                    }
+                    items(g.cats) { c ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().height(72.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                            onClick = { onFeed(c.slug) }
                         ) {
-                            Text(c.name, fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f))
-                            Icon(Icons.Default.ChevronRight, null,
-                                tint = MaterialTheme.colorScheme.outline)
+                            Row(
+                                Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(c.name, fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f))
+                                Icon(Icons.Default.ChevronRight, null,
+                                    tint = MaterialTheme.colorScheme.outline)
+                            }
                         }
                     }
                 }
