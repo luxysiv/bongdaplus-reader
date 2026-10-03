@@ -140,7 +140,8 @@ fun DetailScreen(
         }
     ) { pad ->
         if (loading && detail == null) {
-            Box(Modifier.padding(pad)) { DetailSkeleton() }
+            val isVideoGuess = article.category == "video" || article.url.contains("/video/")
+            Box(Modifier.padding(pad)) { DetailSkeleton(isVideoGuess) }
         } else if (detail != null) {
             val d = detail!!
             val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -681,20 +682,85 @@ private fun ModernCommentCard(
     }
 }
 
+/**
+ * Skeleton mô phỏng đúng khung bài sẽ hiện (khớp padding/cỡ từng khối):
+ * chip chuyên mục + giờ, tiêu đề 2 dòng, sapo vạch màu, byline avatar+tên,
+ * hero + caption, rồi thân bài (đoạn/tiêu đề/ảnh). Bài video dùng mẫu player.
+ */
 @Composable
-private fun DetailSkeleton() {
-    Column(Modifier.padding(16.dp)) {
-        Box(Modifier.fillMaxWidth(0.35f).height(20.dp).shimmer())
-        Spacer(Modifier.height(10.dp))
-        Box(Modifier.fillMaxWidth().height(26.dp).shimmer())
-        Spacer(Modifier.height(6.dp))
-        Box(Modifier.fillMaxWidth(0.85f).height(26.dp).shimmer())
-        Spacer(Modifier.height(12.dp))
-        Box(Modifier.fillMaxWidth().height(200.dp).shimmer())
-        Spacer(Modifier.height(12.dp))
-        repeat(4) {
-            Box(Modifier.fillMaxWidth().height(14.dp).shimmer())
+private fun DetailSkeleton(isVideo: Boolean = false) {
+    Column(Modifier.fillMaxWidth()) {
+        if (isVideo) {
+            // Player 16:9
+            Box(Modifier.padding(12.dp).fillMaxWidth().aspectRatio(16f / 9f).shimmer())
+            // Chip VIDEO + tiêu đề
+            Box(Modifier.padding(start = 16.dp).width(64.dp).height(22.dp).shimmer())
             Spacer(Modifier.height(8.dp))
+            Box(Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(24.dp).shimmer())
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.padding(horizontal = 16.dp).fillMaxWidth(0.75f).height(24.dp).shimmer())
+        } else {
+            Column(Modifier.padding(16.dp, 12.dp, 16.dp, 0.dp)) {
+                // Hàng chip chuyên mục + giờ
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(92.dp).height(22.dp).shimmer())
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.width(130.dp).height(14.dp).shimmer())
+                }
+                Spacer(Modifier.height(10.dp))
+                // Tiêu đề lớn 2 dòng
+                Box(Modifier.fillMaxWidth().height(26.dp).shimmer())
+                Spacer(Modifier.height(6.dp))
+                Box(Modifier.fillMaxWidth(0.9f).height(26.dp).shimmer())
+                Spacer(Modifier.height(10.dp))
+                // Sapo: vạch màu + 3 dòng thụt vào
+                Row {
+                    Box(Modifier.width(3.dp).height(64.dp).shimmer())
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Box(Modifier.fillMaxWidth().height(15.dp).shimmer())
+                        Spacer(Modifier.height(7.dp))
+                        Box(Modifier.fillMaxWidth().height(15.dp).shimmer())
+                        Spacer(Modifier.height(7.dp))
+                        Box(Modifier.fillMaxWidth(0.6f).height(15.dp).shimmer())
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                // Byline: avatar tròn + tên + giờ
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(40.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Box(Modifier.fillMaxWidth(0.45f).height(15.dp).shimmer())
+                        Spacer(Modifier.height(6.dp))
+                        Box(Modifier.fillMaxWidth(0.65f).height(12.dp).shimmer())
+                    }
+                }
+            }
+            // Hero + caption
+            Column(Modifier.padding(12.dp, 10.dp)) {
+                Box(Modifier.fillMaxWidth().height(200.dp).shimmer())
+                Spacer(Modifier.height(6.dp))
+                Box(Modifier.align(Alignment.CenterHorizontally).width(120.dp).height(12.dp).shimmer())
+            }
+        }
+        // Thân bài: cụm đoạn văn + 1 tiêu đề mục + 1 ảnh + đoạn văn
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            repeat(3) {
+                Box(Modifier.fillMaxWidth().height(14.dp).shimmer())
+                Spacer(Modifier.height(8.dp))
+            }
+            Box(Modifier.fillMaxWidth(0.55f).height(20.dp).shimmer())
+            Spacer(Modifier.height(8.dp))
+        }
+        Box(Modifier.padding(12.dp, 4.dp).fillMaxWidth().height(160.dp).shimmer())
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            Spacer(Modifier.height(4.dp))
+            repeat(3) {
+                Box(Modifier.fillMaxWidth(if (it < 2) 1f else 0.8f).height(14.dp).shimmer())
+                Spacer(Modifier.height(8.dp))
+            }
         }
     }
 }
