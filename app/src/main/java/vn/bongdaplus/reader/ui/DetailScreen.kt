@@ -346,7 +346,6 @@ fun DetailScreen(
         if (showComments && detail != null) {
             CommentsBottomSheet(
                 vm = vm,
-                article = article,
                 cmtCount = cmtCount,
                 logged = logged,
                 fontScale = fontScale,

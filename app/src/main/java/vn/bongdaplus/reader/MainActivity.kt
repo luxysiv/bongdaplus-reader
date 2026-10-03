@@ -114,7 +114,8 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(auth, bookmarks,
                                 onOpen = ::openArticle,
                                 onSearch = { nav.navigate("search") },
-                                onFeed = { nav.navigate("feed/$it") })
+                                onFeed = { nav.navigate("feed/$it") },
+                                onLogin = { nav.navigate("login") })
                         }
                         composable("explore") {
                             ExploreScreen(onFeed = { nav.navigate("feed/$it") })

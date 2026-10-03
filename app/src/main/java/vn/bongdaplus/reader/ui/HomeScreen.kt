@@ -27,6 +27,7 @@ fun HomeScreen(
     onOpen: (Article) -> Unit,
     onSearch: () -> Unit,
     onFeed: (String) -> Unit,
+    onLogin: () -> Unit = {},
 ) {
     val vm: HomeViewModel = viewModel()
     val breaking by vm.breaking.collectAsState()
@@ -70,7 +71,7 @@ fun HomeScreen(
                             Card(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                                onClick = { /* chuyển tab Tài khoản để đăng nhập */ }
+                                onClick = onLogin
                             ) {
                                 Text(
                                     "🔐 Đăng nhập để nhận thông báo + đọc bài Premium (tab Tài khoản)",
