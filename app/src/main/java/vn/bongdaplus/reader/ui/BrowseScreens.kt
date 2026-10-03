@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 import vn.bongdaplus.reader.data.*
 
 // ---------- Tab Chuyên mục: nhóm y menu hamburger của web (chỉ bóng đá) ----------
@@ -80,7 +79,6 @@ fun ExploreScreen(onFeed: (String) -> Unit) {
 fun FeedScreen(
     slug: String,
     auth: AuthManager,
-    bookmarks: BookmarkStore,
     onOpen: (Article) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -97,9 +95,6 @@ fun FeedScreen(
     val err by vm.error.collectAsState()
     val loadingMore by vm.loadingMore.collectAsState()
     val endReached by vm.endReached.collectAsState()
-    val savedList by bookmarks.flow().collectAsState(initial = emptyList())
-    val savedIds = remember(savedList) { savedList.map { it.id }.toSet() }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(slug) { vm.cookieProvider = { auth.currentCookies() }; vm.load() }
     val pull = rememberPullRefreshState(refreshing, onRefresh = { vm.load(true) })
@@ -128,8 +123,7 @@ fun FeedScreen(
             else if (err != null && list.isEmpty()) ErrorBox(err!!, onRetry = { vm.load() })
             else LazyColumn(Modifier.fillMaxSize(), state = listState) {
                 items(list, key = { it.id }) { a ->
-                    NewsRowCard(a, savedIds.contains(a.id), onClick = { onOpen(a) },
-                        onToggleSave = { scope.launch { bookmarks.toggle(a) } })
+                    NewsRowCard(a, onClick = { onOpen(a) })
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 12.dp),
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
@@ -165,7 +159,6 @@ fun FeedScreen(
 @Composable
 fun SearchScreen(
     auth: AuthManager,
-    bookmarks: BookmarkStore,
     onOpen: (Article) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -173,9 +166,6 @@ fun SearchScreen(
     val q by vm.query.collectAsState()
     val results by vm.results.collectAsState()
     val searching by vm.searching.collectAsState()
-    val savedList by bookmarks.flow().collectAsState(initial = emptyList())
-    val savedIds = remember(savedList) { savedList.map { it.id }.toSet() }
-    val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { vm.cookieProvider = { auth.currentCookies() } }
 
     val hot = listOf("Việt Nam", "MU", "Ronaldo", "Man City", "Real Madrid", "Arsenal", "Thái Lan")
@@ -211,8 +201,7 @@ fun SearchScreen(
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(results, key = { it.id }) { a ->
-                        NewsRowCard(a, savedIds.contains(a.id), onClick = { onOpen(a) },
-                            onToggleSave = { scope.launch { bookmarks.toggle(a) } })
+                        NewsRowCard(a, onClick = { onOpen(a) })
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 12.dp),
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)

@@ -16,14 +16,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 import vn.bongdaplus.reader.data.*
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.material.ExperimentalMaterialApi::class)
 @Composable
 fun HomeScreen(
     auth: AuthManager,
-    bookmarks: BookmarkStore,
     onOpen: (Article) -> Unit,
     onSearch: () -> Unit,
     onFeed: (String) -> Unit,
@@ -39,9 +37,6 @@ fun HomeScreen(
     val refreshing by vm.refreshing.collectAsState()
     val err by vm.error.collectAsState()
     val logged by auth.loggedIn.collectAsState(initial = false)
-    val savedList by bookmarks.flow().collectAsState(initial = emptyList())
-    val savedIds = remember(savedList) { savedList.map { it.id }.toSet() }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { vm.cookieProvider = { auth.currentCookies() }; vm.load() }
     val pull = rememberPullRefreshState(refreshing, onRefresh = { vm.load(true) })
@@ -112,8 +107,7 @@ fun HomeScreen(
                     }
                     item { SectionHeader("Tin mới nhất", "Xem thêm") { onFeed("tin-moi") } }
                     items(latest.take(10), key = { it.id }) { a ->
-                        NewsRowCard(a, savedIds.contains(a.id), onClick = { onOpen(a) },
-                            onToggleSave = { scope.launch { bookmarks.toggle(a) } })
+                        NewsRowCard(a, onClick = { onOpen(a) })
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 12.dp),
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)

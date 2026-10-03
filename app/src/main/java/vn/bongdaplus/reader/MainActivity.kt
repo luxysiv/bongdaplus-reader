@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
@@ -49,7 +48,6 @@ private val TABS = listOf(
     Tab("home", "Trang chủ", Icons.Default.Home),
     Tab("explore", "Chuyên mục", Icons.Default.List),
     Tab("scores", "Tỉ số", Icons.Default.SportsSoccer),
-    Tab("saved", "Đã lưu", Icons.Default.Bookmark),
     Tab("account", "Tài khoản", Icons.Default.Person),
 )
 
@@ -82,7 +80,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appCtx = this
             val auth = remember { AuthManager(appCtx) }
-            val bookmarks = remember { BookmarkStore(appCtx) }
             val prefs = remember { UiPrefs(appCtx) }
             val themeMode by prefs.themeMode.collectAsState(initial = "system")
             val dynamic by prefs.dynamicColor.collectAsState(initial = true)
@@ -150,7 +147,7 @@ class MainActivity : ComponentActivity() {
                 ) { pad ->
                     NavHost(nav, startDestination = "home", modifier = Modifier.padding(pad)) {
                         composable("home") {
-                            HomeScreen(auth, bookmarks,
+                            HomeScreen(auth,
                                 onOpen = ::openArticle,
                                 onSearch = { nav.navigate("search") },
                                 onFeed = { nav.navigate("feed/$it") },
@@ -168,12 +165,12 @@ class MainActivity : ComponentActivity() {
                         ) { e ->
                             FeedScreen(
                                 slug = e.arguments?.getString("slug") ?: "tin-moi",
-                                auth, bookmarks,
+                                auth,
                                 onOpen = ::openArticle,
                                 onBack = { nav.popBackStack() })
                         }
                         composable("search") {
-                            SearchScreen(auth, bookmarks,
+                            SearchScreen(auth,
                                 onOpen = ::openArticle,
                                 onBack = { nav.popBackStack() })
                         }
@@ -190,7 +187,7 @@ class MainActivity : ComponentActivity() {
                             val cached = ArticleCache.get(id)
                             val article = cached?.takeIf { it.url == url }
                                 ?: Article(BongDaPlusScraper.idFromUrl(url), "Bài viết", url)
-                            DetailScreen(article, auth, bookmarks, prefs,
+                            DetailScreen(article, auth, prefs,
                                 onBack = { nav.popBackStack() },
                                 onOpen = ::openArticle,
                                 onLogin = { nav.navigate("login") },
@@ -218,14 +215,10 @@ class MainActivity : ComponentActivity() {
                                 onDone = { nav.popBackStack() },
                                 onLogin = { nav.navigate("login") })
                         }
-                        composable("saved") {
-                            SavedScreen(bookmarks, onOpen = ::openArticle)
-                        }
                         composable("account") {
-                            AccountScreen(auth, prefs, bookmarks,
+                            AccountScreen(auth, prefs,
                                 onLogin = { nav.navigate("login") },
                                 onRegister = { nav.navigate("register") },
-                                onSaved = { nav.navigate("saved") },
                                 onOpenArticle = ::openArticle,
                                 onNotifs = { nav.navigate("notifs") },
                                 onDisplay = { nav.navigate("display") })

@@ -42,7 +42,6 @@ import vn.bongdaplus.reader.data.*
 fun DetailScreen(
     article: Article,
     auth: AuthManager,
-    bookmarks: BookmarkStore,
     prefs: UiPrefs,
     onBack: () -> Unit,
     onOpen: (Article) -> Unit,
@@ -56,8 +55,6 @@ fun DetailScreen(
     val loading by vm.loading.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val savedList by bookmarks.flow().collectAsState(initial = emptyList())
-    val isSaved = remember(savedList, article.id) { savedList.any { it.id == article.id } }
     val logged by auth.loggedIn.collectAsState(initial = false)
     val fontScale by prefs.fontScale.collectAsState(initial = 1f)
     val readerFont by prefs.readerFont.collectAsState(initial = "serif")
@@ -98,12 +95,6 @@ fun DetailScreen(
                             color = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(onClick = { share() }) { Icon(Icons.Default.Share, "Chia sẻ") }
-                    IconButton(onClick = { scope.launch { bookmarks.toggle(article) } }) {
-                        Icon(
-                            if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, "Lưu",
-                            tint = if (isSaved) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                        )
-                    }
                 }
             )
         },
@@ -361,8 +352,6 @@ fun DetailScreen(
                             parentId = rt?.id ?: "0",
                             replyId = "0",
                             replyName = rt?.name ?: "")
-                        // Tự lưu tin để Worker luôn quét, kể cả user quên bấm Lưu
-                        try { if (!isSaved) bookmarks.toggle(article) } catch (_: Exception) { }
                     }
                 },
                 onDismiss = { showComments = false }

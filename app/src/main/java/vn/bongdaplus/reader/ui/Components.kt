@@ -10,8 +10,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -241,7 +240,7 @@ fun MostReadRow(rank: Int, a: Article, onClick: () -> Unit) {
 // ---------- Card tin dòng ----------
 
 @Composable
-fun NewsRowCard(a: Article, saved: Boolean, onClick: () -> Unit, onToggleSave: () -> Unit) {
+fun NewsRowCard(a: Article, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp)) {
         if (!a.imageUrl.isNullOrBlank()) {
             AsyncImage(
@@ -259,12 +258,11 @@ fun NewsRowCard(a: Article, saved: Boolean, onClick: () -> Unit, onToggleSave: (
             Spacer(Modifier.height(2.dp))
             Text("BongdaPlus", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
-        IconButton(onClick = onToggleSave) {
-            Icon(
-                if (saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, "Lưu",
-                tint = if (saved) MaterialTheme.colorScheme.primary else Color.Gray
-            )
-        }
+        Icon(
+            Icons.Default.ChevronRight, "Mở",
+            tint = Color.Gray,
+            modifier = Modifier.align(Alignment.CenterVertically)
+        )
     }
 }
 

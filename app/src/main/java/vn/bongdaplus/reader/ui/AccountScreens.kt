@@ -103,10 +103,8 @@ private fun GroupCard(content: @Composable ColumnScope.() -> Unit) {
 fun AccountScreen(
     auth: AuthManager,
     prefs: UiPrefs,
-    bookmarks: BookmarkStore,
     onLogin: () -> Unit,
     onRegister: () -> Unit,
-    onSaved: () -> Unit,
     onOpenArticle: (Article) -> Unit = {},
     onNotifs: () -> Unit = {},
     onDisplay: () -> Unit = {},
@@ -118,7 +116,6 @@ fun AccountScreen(
     val notifyCmt by auth.notifyComments.collectAsState(initial = true)
     val themeMode by prefs.themeMode.collectAsState(initial = "system")
     val fontScalePref by prefs.fontScale.collectAsState(initial = 1f)
-    val savedList by bookmarks.flow().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
@@ -249,14 +246,6 @@ fun AccountScreen(
             item { AccountSection("Của tôi") }
             item {
                 GroupCard {
-                    ListItem(
-                        headlineContent = { Text("Tin đã lưu") },
-                        supportingContent = { Text(if (savedList.isEmpty()) "Lưu tin để đọc sau" else "${savedList.size} tin đang lưu") },
-                        leadingContent = { Icon(Icons.Default.Bookmark, null) },
-                        trailingContent = { Icon(Icons.Default.ChevronRight, null) },
-                        modifier = Modifier.clickable(onClick = onSaved)
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     ListItem(
                         headlineContent = { Text("Thông báo bình luận") },
                         supportingContent = { Text(if (logged) "Ai thích / không thích bình luận của bạn" else "Đăng nhập để xem lịch sử thông báo") },

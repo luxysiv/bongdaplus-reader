@@ -18,7 +18,6 @@ import vn.bongdaplus.reader.MainActivity
 import vn.bongdaplus.reader.R
 import vn.bongdaplus.reader.data.Article
 import vn.bongdaplus.reader.data.AuthManager
-import vn.bongdaplus.reader.data.BookmarkStore
 import vn.bongdaplus.reader.data.BongDaPlusScraper
 import vn.bongdaplus.reader.data.catName
 import java.net.HttpURLConnection
@@ -39,7 +38,6 @@ object NotifyHelper {
     const val CH_COMMENTS = "bdp_comments"
     const val WORK_TAG = "news_poll"
     const val GROUP_NEWS = "bdp_group_news"
-    const val ACTION_SAVE = "vn.bongdaplus.reader.SAVE"
     const val ACTION_SHARE = "vn.bongdaplus.reader.SHARE"
     private const val BRAND = 0xFF1B7A43
 
@@ -76,21 +74,6 @@ object NotifyHelper {
         }
         return PendingIntent.getActivity(
             ctx, reqCode, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun savePending(ctx: Context, a: Article, reqCode: Int): PendingIntent {
-        val intent = Intent(ctx, NotificationActionReceiver::class.java).apply {
-            action = ACTION_SAVE
-            putExtra("url", a.url)
-            putExtra("title", a.title)
-            putExtra("image", a.imageUrl ?: "")
-            putExtra("cat", a.category ?: "")
-            putExtra("notif_id", reqCode)
-        }
-        return PendingIntent.getBroadcast(
-            ctx, reqCode + 500000, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
@@ -152,9 +135,6 @@ object NotifyHelper {
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
             .setContentIntent(articlePending(ctx, a.url, false, id))
-            .addAction(NotificationCompat.Action.Builder(
-                IconCompat.createWithResource(ctx, R.drawable.ic_mono_ball),
-                "Lưu tin", savePending(ctx, a, id)).build())
             .addAction(NotificationCompat.Action.Builder(
                 IconCompat.createWithResource(ctx, R.drawable.ic_mono_ball),
                 "Chia sẻ", sharePending(ctx, a, id)).build())
@@ -335,7 +315,7 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
     }
 
     /**
-     * Thông báo bình luận mới CHI TIẾT: quét bài đã lưu + bài đã bình luận,
+     * Thông báo bình luận mới CHI TIẾT: quét bài đã bình luận,
      * so id bình luận thật (/binh-luan). Lần đầu chỉ lưu mốc, không báo.
      * Nội dung báo gồm tên + trích đoạn comment, nhận diện comment của mình đã được duyệt.
      */
@@ -344,11 +324,10 @@ class NewsWorker(appCtx: Context, params: WorkerParameters) : CoroutineWorker(ap
             val enabled = auth.notifyComments.first()
             if (!enabled) return
             NotifyHelper.ensureChannel(applicationContext)
-            val saved = try { BookmarkStore(applicationContext).flow().first() } catch (_: Exception) { return }
-            val tracked = try { vn.bongdaplus.reader.data.CommentTrackStore(applicationContext).tracked() } catch (_: Exception) { emptyList<vn.bongdaplus.reader.data.Article>() }
             val trackStore = vn.bongdaplus.reader.data.CommentTrackStore(applicationContext)
-            // Ưu tiên bài đã bình luận lên trước, sau đó tới bài đã lưu
-            val all = (tracked + saved).distinctBy { it.id }.take(7)
+            // Bài đã mở/bình luận (track tự động khi đọc bài + khi gửi bình luận)
+            val all = try { trackStore.tracked() } catch (_: Exception) { emptyList<vn.bongdaplus.reader.data.Article>() }
+                .take(7)
             if (all.isEmpty()) return
             val counts = auth.commentCounts().toMutableMap()
             var changed = false

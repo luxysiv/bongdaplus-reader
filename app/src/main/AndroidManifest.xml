@@ -35,7 +35,6 @@
             android:name=".notify.NotificationActionReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="vn.bongdaplus.reader.SAVE" />
                 <action android:name="vn.bongdaplus.reader.SHARE" />
             </intent-filter>
         </receiver>
