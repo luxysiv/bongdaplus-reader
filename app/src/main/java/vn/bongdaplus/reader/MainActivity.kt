@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
             val bookmarks = remember { BookmarkStore(appCtx) }
             val prefs = remember { UiPrefs(appCtx) }
             val themeMode by prefs.themeMode.collectAsState(initial = "system")
+            val dynamic by prefs.dynamicColor.collectAsState(initial = true)
             val logged by auth.loggedIn.collectAsState(initial = false)
 
             // Đã login mà thiếu phiên site: đồng bộ ngầm 1 lần mỗi phiên mở app
@@ -68,7 +69,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            NewsTheme(mode = themeMode) {
+            NewsTheme(mode = themeMode, dynamic = dynamic) {
                 val nav = rememberNavController()
                 val backStack by nav.currentBackStackEntryAsState()
                 val route = backStack?.destination?.route

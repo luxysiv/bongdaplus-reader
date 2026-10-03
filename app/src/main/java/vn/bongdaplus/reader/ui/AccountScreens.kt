@@ -93,6 +93,10 @@ fun AccountScreen(
     val notify by auth.notifyEnabled.collectAsState(initial = true)
     val notifyCmt by auth.notifyComments.collectAsState(initial = true)
     val theme by prefs.themeMode.collectAsState(initial = "system")
+    val dynamic by prefs.dynamicColor.collectAsState(initial = true)
+    val readerFont by prefs.readerFont.collectAsState(initial = "serif")
+    val fontScalePref by prefs.fontScale.collectAsState(initial = 1f)
+    val lineSpacePref by prefs.lineSpace.collectAsState(initial = 1f)
     val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
@@ -321,6 +325,7 @@ fun AccountScreen(
             }
             // Giao diện
             item {
+                val supportDynamic = android.os.Build.VERSION.SDK_INT >= 31
                 Text("Giao diện", fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp))
                 Row(
@@ -335,6 +340,56 @@ fun AccountScreen(
                         )
                     }
                 }
+                ListItem(
+                    headlineContent = { Text("Màu động theo hình nền") },
+                    supportingContent = { Text(if (supportDynamic) "Material You (Android 12+)" else "Cần Android 12 trở lên — đang dùng xanh BongdaPlus") },
+                    trailingContent = {
+                        Switch(
+                            checked = dynamic && supportDynamic,
+                            enabled = supportDynamic,
+                            onCheckedChange = { scope.launch { prefs.setDynamicColor(it) } }
+                        )
+                    }
+                )
+                Text("Font bài đọc", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(16.dp, 4.dp, 16.dp, 0.dp))
+                Row(
+                    Modifier.padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = readerFont == "sans",
+                        onClick = { scope.launch { prefs.setReaderFont("sans") } },
+                        label = { Text("Không chân") }
+                    )
+                    FilterChip(
+                        selected = readerFont == "serif",
+                        onClick = { scope.launch { prefs.setReaderFont("serif") } },
+                        label = { Text("Có chân", fontFamily = androidx.compose.ui.text.font.FontFamily.Serif) }
+                    )
+                }
+                var fontTmp by remember(fontScalePref) { mutableStateOf(fontScalePref) }
+                ListItem(
+                    headlineContent = { Text("Cỡ chữ: ${"%.0f".format(fontTmp * 100)}%") },
+                    supportingContent = {
+                        Slider(
+                            value = fontTmp, onValueChange = { fontTmp = it },
+                            onValueChangeFinished = { scope.launch { prefs.setFontScale(fontTmp) } },
+                            valueRange = 0.85f..1.3f, steps = 8
+                        )
+                    }
+                )
+                var lineTmp by remember(lineSpacePref) { mutableStateOf(lineSpacePref) }
+                ListItem(
+                    headlineContent = { Text("Giãn dòng: ${"%.0f".format(lineTmp * 100)}%") },
+                    supportingContent = {
+                        Slider(
+                            value = lineTmp, onValueChange = { lineTmp = it },
+                            onValueChangeFinished = { scope.launch { prefs.setLineSpace(lineTmp) } },
+                            valueRange = 1f..1.6f, steps = 5
+                        )
+                    }
+                )
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider()
             }

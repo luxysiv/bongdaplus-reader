@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,6 +69,10 @@ fun DetailScreen(
     val isSaved = remember(savedList, article.id) { savedList.any { it.id == article.id } }
     val logged by auth.loggedIn.collectAsState(initial = false)
     val fontScale by prefs.fontScale.collectAsState(initial = 1f)
+    val readerFont by prefs.readerFont.collectAsState(initial = "serif")
+    val lineSpace by prefs.lineSpace.collectAsState(initial = 1f)
+    // Font bài đọc: serif có chân kiểu báo giấy, sans hiện đại
+    val bodyFont = if (readerFont == "serif") FontFamily.Serif else FontFamily.Default
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<Comment?>(null) }
     val myVotes by vm.myVotes.collectAsState()
@@ -118,7 +123,18 @@ fun DetailScreen(
             Box(Modifier.padding(pad)) { LoadingSkeleton(4) }
         } else if (detail != null) {
             val d = detail!!
-            LazyColumn(Modifier.padding(pad).fillMaxSize()) {
+            val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+            // Thanh tiến độ đọc (kiểu app báo)
+            val progress by remember {
+                derivedStateOf {
+                    val total = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(1)
+                    val idx = listState.firstVisibleItemIndex +
+                        (if (listState.firstVisibleItemScrollOffset > 0) 1 else 0)
+                    (idx.toFloat() / total).coerceIn(0f, 1f)
+                }
+            }
+            Box(Modifier.padding(pad).fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), state = listState) {
                 // Hero
                 if (!d.article.imageUrl.isNullOrBlank()) {
                     item {
@@ -181,10 +197,11 @@ fun DetailScreen(
                     item {
                         Text(d.bodyText.ifBlank { "Không tải được nội dung. Mở bài gốc trên web nhé." },
                             modifier = Modifier.padding(16.dp),
-                            fontSize = (17 * fontScale).sp, lineHeight = (27 * fontScale).sp)
+                            fontFamily = bodyFont,
+                            fontSize = (17 * fontScale).sp, lineHeight = (27 * fontScale * lineSpace).sp)
                     }
                 } else {
-                    items(d.blocks) { b -> BlockView(b, fontScale) }
+                    items(d.blocks) { b -> BlockView(b, fontScale, bodyFont, lineSpace) }
                 }
                 // Nguồn
                 item {
@@ -204,6 +221,7 @@ fun DetailScreen(
                         CommentCard(c, fontScale,
                             voted = myVotes[c.id] ?: 0,
                             canVote = logged,
+                            bodyFont = bodyFont, lineSpace = lineSpace,
                             onLike = { vm.reactComment(c.id, true) },
                             onDislike = { vm.reactComment(c.id, false) },
                             onReply = { replyTo = c })
@@ -278,6 +296,11 @@ fun DetailScreen(
                     }
                 }
                 item { Spacer(Modifier.height(24.dp)) }
+                }
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                )
             }
         } else {
             Box(Modifier.padding(pad)) {
@@ -288,12 +311,16 @@ fun DetailScreen(
 }
 
 @Composable
-private fun BlockView(b: ContentBlock, fontScale: Float) {
+private fun BlockView(
+    b: ContentBlock, fontScale: Float,
+    bodyFont: FontFamily = FontFamily.Serif, lineSpace: Float = 1f,
+) {
     val ctx = LocalContext.current
     when (b) {
         is ContentBlock.Paragraph -> Text(
             b.text, modifier = Modifier.padding(16.dp, 6.dp),
-            fontSize = (17 * fontScale).sp, lineHeight = (27 * fontScale).sp
+            fontFamily = bodyFont,
+            fontSize = (17 * fontScale).sp, lineHeight = (27 * fontScale * lineSpace).sp
         )
         is ContentBlock.Heading -> Text(
             b.text, modifier = Modifier.padding(16.dp, 10.dp, 16.dp, 4.dp),
@@ -339,12 +366,13 @@ private fun BlockView(b: ContentBlock, fontScale: Float) {
             Box(Modifier.width(4.dp).height(60.dp)
                 .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)))
             Spacer(Modifier.width(10.dp))
-            Text(b.text, fontWeight = FontWeight.SemiBold,
-                fontSize = (18 * fontScale).sp, lineHeight = (28 * fontScale).sp)
+            Text(b.text, fontWeight = FontWeight.SemiBold, fontFamily = bodyFont,
+                fontSize = (18 * fontScale).sp, lineHeight = (28 * fontScale * lineSpace).sp)
         }
         is ContentBlock.Bullet -> Row(Modifier.padding(20.dp, 4.dp)) {
             Text("•  ", fontWeight = FontWeight.Bold)
-            Text(b.text, fontSize = (17 * fontScale).sp, lineHeight = (26 * fontScale).sp)
+            Text(b.text, fontFamily = bodyFont,
+                fontSize = (17 * fontScale).sp, lineHeight = (26 * fontScale * lineSpace).sp)
         }
     }
 }
@@ -493,6 +521,7 @@ private fun VideoExternalCard(embedUrl: String, videoId: String?) {
 @Composable
 private fun CommentCard(c: Comment, fontScale: Float,
                         voted: Int = 0, canVote: Boolean = false,
+                        bodyFont: FontFamily = FontFamily.Serif, lineSpace: Float = 1f,
                         onLike: () -> Unit = {}, onDislike: () -> Unit = {},
                         onReply: () -> Unit = {}) {
     Row(Modifier.padding(12.dp, 8.dp)) {
@@ -516,8 +545,8 @@ private fun CommentCard(c: Comment, fontScale: Float,
                 }
             }
             Spacer(Modifier.height(2.dp))
-            Text(c.text, fontSize = (15 * fontScale).sp,
-                lineHeight = (23 * fontScale).sp)
+            Text(c.text, fontFamily = bodyFont, fontSize = (15 * fontScale).sp,
+                lineHeight = (23 * fontScale * lineSpace).sp)
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("👍 ${c.likes}",

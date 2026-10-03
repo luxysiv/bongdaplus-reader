@@ -4,6 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
 // Xanh lá thương hiệu BongdaPlus
 private val Green40 = Color(0xFF1B7A43)
@@ -29,16 +30,25 @@ private val DarkScheme = darkColorScheme(
 )
 
 @Composable
-fun NewsTheme(mode: String = "system", content: @Composable () -> Unit) {
+fun NewsTheme(
+    mode: String = "system",
+    dynamic: Boolean = true,
+    content: @Composable () -> Unit,
+) {
     val dark = when (mode) {
         "light" -> false
         "dark" -> true
         else -> isSystemInDarkTheme()
     }
-    MaterialTheme(
-        colorScheme = if (dark) DarkScheme else LightScheme,
-        content = content
-    )
+    // Màu động Material You theo hình nền (Android 12+); máy cũ dùng xanh thương hiệu
+    val useDynamic = dynamic && android.os.Build.VERSION.SDK_INT >= 31
+    val scheme = when {
+        useDynamic && dark -> dynamicDarkColorScheme(LocalContext.current)
+        useDynamic -> dynamicLightColorScheme(LocalContext.current)
+        dark -> DarkScheme
+        else -> LightScheme
+    }
+    MaterialTheme(colorScheme = scheme, content = content)
 }
 
 /** Màu nhãn NÓNG dùng chung light/dark */
