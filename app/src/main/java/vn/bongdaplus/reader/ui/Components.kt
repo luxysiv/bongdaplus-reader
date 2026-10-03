@@ -43,6 +43,23 @@ fun MetaLine(a: Article, light: Boolean = false) {
             Text("  •  ${a.time}", color = if (light) Color.White.copy(alpha = 0.8f) else Color.Gray,
                 style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
+        // Số bình luận web đính kèm: hiện dạng pill riêng (khác hẳn font tiêu đề
+        // để khỏi nhầm với chữ trong tít như trước).
+        if (a.comments > 0) {
+            Spacer(Modifier.width(6.dp))
+            Surface(
+                color = if (light) Color.White.copy(alpha = 0.92f)
+                else MaterialTheme.colorScheme.tertiaryContainer,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("💬 ${a.comments}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (light) Color(0xFFC62828)
+                    else MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+            }
+        }
     }
 }
 

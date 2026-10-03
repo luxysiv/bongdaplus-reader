@@ -8,7 +8,8 @@ data class Article(
     val imageUrl: String? = null,
     val category: String? = null,
     val summary: String? = null,
-    val time: String? = null
+    val time: String? = null,
+    val comments: Int = 0,   // số bình luận web hiện kèm (tab "Bình luận nhiều")
 )
 
 data class ArticleDetail(

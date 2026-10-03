@@ -66,6 +66,11 @@ object BongDaPlusScraper {
             if (href.isEmpty() || href.startsWith("#") || !href.contains(".html")) continue
             val url = absUrl(href)
             if (!url.contains("bongdaplus.vn")) continue
+            // Tab "Bình luận nhiều" nhét số đếm trong <span class="comm-lnk>31</span>
+            // ngay trong thẻ a.title -> tách ra, khỏi dính vào tiêu đề.
+            val cmtCount = aTitle.selectFirst(".comm-lnk")?.text()
+                ?.filter { it.isDigit() }?.toIntOrNull() ?: 0
+            aTitle.select(".comm-lnk").remove()
             val title = aTitle.attr("title").ifBlank { aTitle.text().trim() }
             if (title.length < 12) continue
             val id = idFromUrl(url)
@@ -77,7 +82,8 @@ object BongDaPlusScraper {
             )
             val time = card.select("span.info span, span.time, time").map { it.text().trim() }
                 .firstOrNull { it.length in 4..48 }
-            out[id] = Article(id, title, url, img, category, time = time?.ifBlank { null })
+            out[id] = Article(id, title, url, img, category,
+                time = time?.ifBlank { null }, comments = cmtCount)
             if (out.size >= 40) break
         }
         // 2) Fallback tolerant nếu layout đổi
@@ -87,12 +93,15 @@ object BongDaPlusScraper {
                 if (href.isEmpty() || href.startsWith("#")) continue
                 val url = absUrl(href)
                 if (!url.contains("bongdaplus.vn")) continue
+                val cmtCount = a.selectFirst(".comm-lnk")?.text()
+                    ?.filter { it.isDigit() }?.toIntOrNull() ?: 0
+                a.select(".comm-lnk").remove()
                 val title = a.attr("title").ifBlank { a.text().trim() }
                 if (title.length < 12) continue
                 val id = idFromUrl(url)
                 if (out.containsKey(id)) continue
                 val img = absImg(a.selectFirst("img")?.attr("abs:src"))
-                out[id] = Article(id, title, url, img, category)
+                out[id] = Article(id, title, url, img, category, comments = cmtCount)
                 if (out.size >= 40) break
             }
         }
