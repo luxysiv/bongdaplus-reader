@@ -27,6 +27,15 @@ object BongDaPlusScraper {
         else -> "$BASE/$href"
     }
 
+    /**
+     * Chuẩn hóa Unicode NFC cho mọi text lấy từ web (sửa lỗi font tiếng Việt:
+     * entity dạng decomposed như o&#x302; giải ra dấu tổ hợp rời, nhiều font
+     * máy render vỡ). Gọi ở mọi chỗ text hiển thị cho user.
+     */
+    private fun String.nfc(): String = try {
+        java.text.Normalizer.normalize(this, java.text.Normalizer.Form.NFC)
+    } catch (_: Exception) { this }
+
     fun idFromUrl(url: String): String {
         // ...-5240612610.html -> 5240612610
         val m = Regex("(\\d{6,})\\.html").find(url)
@@ -71,7 +80,7 @@ object BongDaPlusScraper {
             val cmtCount = aTitle.selectFirst(".comm-lnk")?.text()
                 ?.filter { it.isDigit() }?.toIntOrNull() ?: 0
             aTitle.select(".comm-lnk").remove()
-            val title = aTitle.attr("title").ifBlank { aTitle.text().trim() }
+            val title = aTitle.attr("title").ifBlank { aTitle.text().trim() }.nfc()
             if (title.length < 12) continue
             val id = idFromUrl(url)
             if (out.containsKey(id)) continue
@@ -80,7 +89,7 @@ object BongDaPlusScraper {
                     it.attr("abs:src").ifBlank { it.attr("abs:data-src") }
                 }
             )
-            val time = card.select("span.info span, span.time, time").map { it.text().trim() }
+            val time = card.select("span.info span, span.time, time").map { it.text().trim().nfc() }
                 .firstOrNull { it.length in 4..48 }
             out[id] = Article(id, title, url, img, category,
                 time = time?.ifBlank { null }, comments = cmtCount)
@@ -96,7 +105,7 @@ object BongDaPlusScraper {
                 val cmtCount = a.selectFirst(".comm-lnk")?.text()
                     ?.filter { it.isDigit() }?.toIntOrNull() ?: 0
                 a.select(".comm-lnk").remove()
-                val title = a.attr("title").ifBlank { a.text().trim() }
+                val title = a.attr("title").ifBlank { a.text().trim() }.nfc()
                 if (title.length < 12) continue
                 val id = idFromUrl(url)
                 if (out.containsKey(id)) continue
@@ -183,19 +192,19 @@ object BongDaPlusScraper {
             when (el.tagName()) {
                 "p" -> {
                     val imgs = el.select("img")
-                    val t = el.ownText().trim().ifBlank { el.text().trim() }
+                    val t = el.ownText().trim().ifBlank { el.text().trim() }.nfc()
                     if (imgs.isNotEmpty()) {
-                        for (im in imgs) imgUrl(im)?.let { blocks += ContentBlock.Image(it, im.attr("alt").ifBlank { null }) }
+                        for (im in imgs) imgUrl(im)?.let { blocks += ContentBlock.Image(it, im.attr("alt").ifBlank { null }?.nfc()) }
                         if (t.length > 20) blocks += ContentBlock.Paragraph(t)
                     } else if (t.length >= 2 && !t.startsWith("Nguồn")) {
                         blocks += ContentBlock.Paragraph(t)
                     }
                 }
                 "h2", "h3", "h4" -> {
-                    val t = el.text().trim()
+                    val t = el.text().trim().nfc()
                     if (t.length >= 2) blocks += ContentBlock.Heading(t)
                 }
-                "img" -> imgUrl(el)?.let { blocks += ContentBlock.Image(it, el.attr("alt").ifBlank { null }) }
+                "img" -> imgUrl(el)?.let { blocks += ContentBlock.Image(it, el.attr("alt").ifBlank { null }?.nfc()) }
                 "iframe" -> {
                     // video nhúng trong thân bài (thường là YouTube)
                     val src = el.attr("abs:src").ifBlank { el.attr("src") }.trim()
@@ -203,11 +212,11 @@ object BongDaPlusScraper {
                     if (vid != null) blocks += ContentBlock.Video(src, vid, null)
                 }
                 "blockquote" -> {
-                    val t = el.text().trim()
+                    val t = el.text().trim().nfc()
                     if (t.length >= 2) blocks += ContentBlock.Quote(t)
                 }
                 "li" -> {
-                    val t = el.text().trim()
+                    val t = el.text().trim().nfc()
                     if (t.length >= 2) blocks += ContentBlock.Bullet(t)
                 }
                 "div", "section", "article", "figure", "figcaption" -> {
@@ -230,8 +239,8 @@ object BongDaPlusScraper {
     suspend fun fetchDetail(url: String, cookies: Map<String, String> = emptyMap()): ArticleDetail =
         withContext(Dispatchers.IO) {
             val doc = loadDoc(url, cookies)
-            val title = doc.selectFirst("h1")?.text()?.trim()
-                ?: doc.selectFirst("meta[property=og:title]")?.attr("content") ?: "Bài viết"
+            val title = (doc.selectFirst("h1")?.text()?.trim()
+                ?: doc.selectFirst("meta[property=og:title]")?.attr("content") ?: "Bài viết").nfc()
             var ogImg = doc.selectFirst("meta[property=og:image]")?.attr("content")
             // Trang video (/video/...): player là iframe trong div.play-box —
             // tin thường là YouTube embed, highlight là streaming.bongdaplus.vn/embed/...
@@ -243,7 +252,7 @@ object BongDaPlusScraper {
                 }
             val ytId = extractYoutubeId(videoSrc)
             val hasVideo = videoSrc.isNotBlank()
-            val clipDesc = doc.selectFirst("div.clip-info p.desc")?.text()?.trim().orEmpty()
+            val clipDesc = doc.selectFirst("div.clip-info p.desc")?.text()?.trim().orEmpty().nfc()
             val bodyEl = doc.selectFirst("#postContent.content")
                 ?: doc.selectFirst("div.content")
                 ?: doc.selectFirst("div.clip-info")
@@ -264,7 +273,7 @@ object BongDaPlusScraper {
                     if (keep(clipDesc)) add(ContentBlock.Paragraph(clipDesc))
                     // các đoạn chữ còn lại trong clip-info (tags nằm ngoài div này nên an toàn)
                     bodyEl.select("p").forEach {
-                        val t = it.text().trim()
+                        val t = it.text().trim().nfc()
                         if (t != clipDesc && keep(t)) add(ContentBlock.Paragraph(t))
                     }
                 }.take(50)
@@ -277,33 +286,33 @@ object BongDaPlusScraper {
             // tác giả + giờ từ JSON-LD NewsArticle (chuẩn nhất, web thật luôn có)
             val ld = doc.select("script[type=application/ld+json]").map { it.html() }
                 .firstOrNull { it.contains("NewsArticle") } ?: ""
-            val author = Regex("\"name\"\\s*:\\s*\"([^\"]+)\"").find(
+            val author = (Regex("\"name\"\\s*:\\s*\"([^\"]+)\"").find(
                 ld.substringAfter("\"author\"").take(300)
             )?.groupValues?.get(1)
                 ?: doc.selectFirst(".author-name, .author, .author-info .name")?.text()?.trim()?.ifBlank { null }
-                ?: doc.selectFirst("meta[name=author]")?.attr("content")?.ifBlank { null }
+                ?: doc.selectFirst("meta[name=author]")?.attr("content")?.ifBlank { null })?.nfc()
             // Avatar + chức danh tác giả từ khối ld+json Person thứ 2 (web thật có)
             val personLd = doc.select("script[type=application/ld+json]").map { it.html() }
                 .firstOrNull { it.contains("\"Person\"") && it.contains("jobTitle") } ?: ""
             val authorAvatar = Regex("\"image\"\\s*:\\s*\"([^\"]+)\"").find(personLd)
                 ?.groupValues?.get(1)?.takeIf { it.startsWith("http") }
                 ?: doc.selectFirst(".author-info img, .author img")?.attr("abs:src")?.takeIf { it.startsWith("http") }
-            val authorRole = Regex("\"jobTitle\"\\s*:\\s*\"([^\"]+)\"").find(personLd)
+            val authorRole = (Regex("\"jobTitle\"\\s*:\\s*\"([^\"]+)\"").find(personLd)
                 ?.groupValues?.get(1)
-                ?: doc.selectFirst(".author-info .role, .author .role")?.text()?.trim()?.ifBlank { null }
+                ?: doc.selectFirst(".author-info .role, .author .role")?.text()?.trim()?.ifBlank { null })?.nfc()
             val published = Regex("\"datePublished\"\\s*:\\s*\"([^\"]+)\"").find(ld)?.groupValues?.get(1)
                 ?: doc.selectFirst("meta[property=article:published_time]")?.attr("content")
                 ?: doc.selectFirst("time[datetime]")?.attr("datetime")?.ifBlank { null }
                 ?: doc.selectFirst("time")?.text()?.trim()
             // Sapo (đoạn mở đầu in đậm kiểu báo): og:description / ld description / h2.sapo
-            val sapo = doc.selectFirst("h2.sapo, .sapo, .lead, .summary")?.text()?.trim()?.takeIf { it.length > 10 }
+            val sapo = (doc.selectFirst("h2.sapo, .sapo, .lead, .summary")?.text()?.trim()?.takeIf { it.length > 10 }
                 ?: Regex("\"description\"\\s*:\\s*\"([^\"]{20,500})\"").find(ld)?.groupValues?.get(1)?.trim()
-                ?: doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty()
+                ?: doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty()).nfc()
             // Tags bài viết: CHỈ trong div.hash-tags của bài (web thật).
             // Không dùng a[href*=-tags] toàn trang vì dính link menu
             // (nhan-dinh-bong-da-tags, cup-lien-doan-phap-tags...).
             val tags = try {
-                doc.select("div.hash-tags a").map { it.text().trim() }
+                doc.select("div.hash-tags a").map { it.text().trim().nfc() }
                     .filter { it.length in 2..40 }.distinct().take(8)
             } catch (_: Exception) { emptyList() }
             // .mht thật: không còn #objectid/#objecttype trong HTML tĩnh (render bằng JS).
@@ -340,10 +349,10 @@ object BongDaPlusScraper {
             doc.select("#NewsComments li.comment").mapNotNull { li ->
                 val likeA = li.selectFirst("a[id^=btnlikecmt_]")
                 val cid = likeA?.attr("id")?.substringAfter("btnlikecmt_") ?: return@mapNotNull null
-                val name = li.selectFirst("a.member")?.text()?.trim().ifNullOrBlank { "Bạn đọc" }
-                val info = li.selectFirst("div.info")?.text() ?: ""
+                val name = li.selectFirst("a.member")?.text()?.trim().ifNullOrBlank { "Bạn đọc" }.nfc()
+                val info = (li.selectFirst("div.info")?.text() ?: "").nfc()
                 val time = info.substringAfter(name).trim().ifBlank { "" }
-                val text = li.selectFirst("p.summ")?.text()?.trim() ?: return@mapNotNull null
+                val text = li.selectFirst("p.summ")?.text()?.trim()?.nfc() ?: return@mapNotNull null
                 if (text.isBlank()) return@mapNotNull null
                 Comment(cid, name, time, text,
                     li.selectFirst("span[id^=thumup]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
@@ -351,6 +360,8 @@ object BongDaPlusScraper {
             }
         } catch (_: Exception) { emptyList() }
     }
+
+    /** Chỉ lấy objectId/objectType (nhẹ, cho worker đếm bình luận) */
 
     /** Chỉ lấy objectId/objectType (nhẹ, cho worker đếm bình luận) */
     suspend fun fetchObjectRef(url: String, cookies: Map<String, String> = emptyMap()): Pair<String, String>? =
@@ -403,10 +414,10 @@ object BongDaPlusScraper {
                 return frag.select("li.comment").mapNotNull { li ->
                     val likeA = li.selectFirst("a[id^=btnlikecmt_]")
                     val cid = likeA?.attr("id")?.substringAfter("btnlikecmt_") ?: return@mapNotNull null
-                    val name = li.selectFirst("a.member")?.text()?.trim().ifNullOrBlank { "Bạn đọc" }
-                    val info = li.selectFirst("div.info")?.text() ?: ""
+                    val name = li.selectFirst("a.member")?.text()?.trim().ifNullOrBlank { "Bạn đọc" }.nfc()
+                    val info = (li.selectFirst("div.info")?.text() ?: "").nfc()
                     val time = info.substringAfter(name).trim().ifBlank { "" }
-                    val text = li.selectFirst("p.summ")?.text()?.trim() ?: return@mapNotNull null
+                    val text = li.selectFirst("p.summ")?.text()?.trim()?.nfc() ?: return@mapNotNull null
                     if (text.isBlank()) return@mapNotNull null
                     Comment(cid, name, time, text,
                         li.selectFirst("span[id^=thumup]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
@@ -475,9 +486,7 @@ object BongDaPlusScraper {
                 val doc = loadDoc("https://member.bongdaplus.vn/Identity/Account/Manage/DashBoard", cookies)
                 // nếu bị đá về trang login thì không có board
                 if (doc.selectFirst("input#Input_Email, form#account") != null) return@withContext emptyList()
-                fun norm(s: String): String = try {
-                    java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFC)
-                } catch (_: Exception) { s }
+                fun norm(s: String): String = s.nfc()
                 val board = doc.select("div.board").firstOrNull {
                     norm(it.selectFirst("div.brd-cap")?.text() ?: "").contains(norm("Bài mới bình luận"))
                 } ?: doc.select("div.board").firstOrNull {
@@ -494,12 +503,12 @@ object BongDaPlusScraper {
                         ?: return@mapNotNull null
                     val commentUrl = absUrl(cmtA.attr("href").trim())
                     val commentId = commentUrl.substringAfter("#", "").trim()
-                    val myText = cmtA.text().trim().replace(Regex("\\s+"), " ")
+                    val myText = cmtA.text().trim().replace(Regex("\\s+"), " ").nfc()
                     if (myText.isBlank()) return@mapNotNull null
-                    val time = li.select("span.info").map { it.text().trim() }
+                    val time = li.select("span.info").map { it.text().trim().nfc() }
                         .firstOrNull { it.isNotBlank() && !it.contains(myText.take(20)) } ?: ""
                     val aid = idFromUrl(articleUrl)
-                    MyCommented(Article(aid, aTitle.text().trim(), articleUrl), commentId, commentUrl, myText, time)
+                    MyCommented(Article(aid, aTitle.text().trim().nfc(), articleUrl), commentId, commentUrl, myText, time)
                 }.take(20)
             } catch (_: Exception) { emptyList() }
         }
@@ -553,18 +562,18 @@ object BongDaPlusScraper {
                     // contents là HTML: parse lấy text + actor + giờ
                     val frag = try { Jsoup.parseBodyFragment(html) } catch (_: Exception) { continue }
                     val a = frag.selectFirst("a[href]")
-                    val full = (a?.text() ?: frag.text()).trim().replace(Regex("\\s+"), " ")
+                    val full = (a?.text() ?: frag.text()).trim().replace(Regex("\\s+"), " ").nfc()
                     if (full.isBlank()) continue
                     var actor = (a?.selectFirst("b")?.text()?.trim().orEmpty())
                         .ifBlank { (o.optString("fullNameFrom") ?: "").trim().ifBlank { "Ai đó" } }
-                    actor = actor.replace(Regex("\\s+"), " ")
+                    actor = actor.replace(Regex("\\s+"), " ").nfc()
                     // urlPath sạch (neo #txtcomment_ đúng); contents href đôi khi dính id lặp
                     var href = (o.optString("urlPath") ?: "").trim()
                         .ifBlank { a?.attr("href")?.trim().orEmpty() }
                     if (href.isBlank()) continue
                     if (href.startsWith("/")) href = href.substring(1)
                     val url = absUrl(href)
-                    val infoTime = frag.selectFirst("span.info")?.text()?.trim().orEmpty()
+                    val infoTime = frag.selectFirst("span.info")?.text()?.trim().orEmpty().nfc()
                     val time = infoTime.ifBlank { (o.optString("postedDate") ?: "").trim() }
                     val action = when {
                         full.contains("không thích", true) -> "không thích"
@@ -600,9 +609,9 @@ object BongDaPlusScraper {
                     val href = a.attr("href").trim()
                     if (href.isEmpty() || !href.contains("txtcomment_")) return@mapNotNull null
                     val url = absUrl(href)
-                    val full = a.text().trim().replace(Regex("\\s+"), " ")
+                    val full = a.text().trim().replace(Regex("\\s+"), " ").nfc()
                     if (full.isBlank()) return@mapNotNull null
-                    val actor = a.selectFirst("b")?.text()?.trim().ifNullOrBlank { "Ai đó" }
+                    val actor = a.selectFirst("b")?.text()?.trim().ifNullOrBlank { "Ai đó" }.nfc()
                     val action = when {
                         full.contains("không thích", true) -> "không thích"
                         full.contains("thích", true) -> "thích"
@@ -610,7 +619,7 @@ object BongDaPlusScraper {
                         full.contains("duyệt", true) -> "duyệt"
                         else -> "bình luận"
                     }
-                    val time = li.selectFirst("span.info")?.text()?.trim() ?: ""
+                    val time = li.selectFirst("span.info")?.text()?.trim()?.nfc() ?: ""
                     val key = "$actor|$action|$url|$time".hashCode().toString() + "|" + url.hashCode()
                     MemberNotification(key, actor, action, full, url, time)
                 }.distinctBy { it.key }.take(30)
@@ -901,9 +910,9 @@ object BongDaPlusScraper {
             val p = Http.get("https://member.bongdaplus.vn/Identity/Account/Manage")
                 ?: return@withContext ""
             if (p.bouncedToLogin()) return@withContext ""
-            Regex("Xin chào\\s*<b>([^<]{1,40})</b>").find(p.html)?.groupValues?.get(1)?.trim()
+            (Regex("Xin chào\\s*<b>([^<]{1,40})</b>").find(p.html)?.groupValues?.get(1)?.trim()
                 ?: Regex("Xin chào\\s+([^\\n<]{1,40})").find(
-                    Jsoup.parse(p.html).body().text())?.groupValues?.get(1)?.trim().orEmpty()
+                    Jsoup.parse(p.html).body().text())?.groupValues?.get(1)?.trim().orEmpty()).nfc()
         } catch (_: Exception) { "" }
     }
 

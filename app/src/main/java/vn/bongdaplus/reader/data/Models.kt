@@ -113,6 +113,11 @@ val CATEGORIES = listOf(
 fun catName(slug: String?): String =
     CATEGORIES.find { it.slug == slug }?.name ?: "Bóng đá"
 
+/** Chuẩn hóa Unicode NFC (sửa lỗi font tiếng Việt khi text chứa dấu tổ hợp rời). */
+fun String.nfcVi(): String = try {
+    java.text.Normalizer.normalize(this, java.text.Normalizer.Form.NFC)
+} catch (_: Exception) { this }
+
 /** Cache RAM: prefill chi tiết khi bấm từ list để khỏi chờ load */
 object ArticleCache {
     private val map = LinkedHashMap<String, Article>()

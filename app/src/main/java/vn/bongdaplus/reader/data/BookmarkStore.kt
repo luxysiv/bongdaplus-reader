@@ -22,7 +22,7 @@ class BookmarkStore(private val ctx: Context) {
                 val o: JSONObject = arr.getJSONObject(i)
                 Article(
                     id = o.optString("id"),
-                    title = o.optString("t"),
+                    title = o.optString("t").nfcVi(),
                     url = o.optString("u"),
                     imageUrl = o.optString("img").ifBlank { null },
                     category = o.optString("cat").ifBlank { null }

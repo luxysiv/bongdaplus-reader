@@ -36,7 +36,7 @@ class CommentTrackStore(private val ctx: Context) {
                 val a = o.getJSONObject(k)
                 out += Article(
                     id = k,
-                    title = a.optString("t", "Bài viết"),
+                    title = a.optString("t", "Bài viết").nfcVi(),
                     url = a.optString("u"),
                     category = a.optString("cat").ifBlank { null }
                 )
@@ -103,7 +103,7 @@ class CommentTrackStore(private val ctx: Context) {
         return try {
             val arr = readObj().optJSONObject(articleId)?.optJSONArray("mine")
                 ?: return emptyList()
-            (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
+            (0 until arr.length()).map { arr.optString(it).nfcVi() }.filter { it.isNotBlank() }
         } catch (_: Exception) { emptyList() }
     }
 

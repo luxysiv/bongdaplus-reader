@@ -178,7 +178,7 @@ class MainActivity : ComponentActivity() {
                             SavedScreen(bookmarks, onOpen = ::openArticle)
                         }
                         composable("account") {
-                            AccountScreen(auth, prefs,
+                            AccountScreen(auth, prefs, bookmarks,
                                 onLogin = { nav.navigate("login") },
                                 onRegister = { nav.navigate("register") },
                                 onSaved = { nav.navigate("saved") },
