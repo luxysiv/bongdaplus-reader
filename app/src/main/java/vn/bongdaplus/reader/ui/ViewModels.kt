@@ -209,7 +209,8 @@ class DetailViewModel : ViewModel() {
             val code = try {
                 BongDaPlusScraper.setCommentEmotion(
                     d.objectId, commentId, like, cookiesOf(cookieProvider),
-                    d.article.url, d.objectType)
+                    d.article.url, d.objectType,
+                    prevActive = active, isUndo = undo)
             } catch (_: Exception) { 0 }
             if (code != 200) {
                 _comments.value = snapComments

@@ -550,23 +550,39 @@ object BongDaPlusScraper {
         }
 
     /**
-     * Thích / Không thích 1 bình luận. Web (bongdaplus.js) chỉ tin HTTP 200,
-     * không đọc lại gì (response 0 byte) — server tự toggle mỗi POST cùng type.
-     * App làm y hệt: POST đúng 1 lần, 200 + không bounce login = thành công.
-     * Mọi bước "xác minh" đọc lại (số đếm /GetCommentEmotion) đều đã gây báo
-     * sai vì số đếm và API trạng thái đều bị server cache — nên bỏ hẳn.
-     * UI cập nhật lạc quan rồi tải lại để chốt theo server.
-     */
-    /**
-     * @return mã HTTP server trả về: 200 = đã nhận; khác = lỗi (411=thiếu
-     * Content-Length, 401/403=thiếu phiên...); 0 = lỗi mạng / Jsoup fallback thất bại.
+     * Thích / Không thích 1 bình luận, y hệt web (bongdaplus.js):
+     *  - Gửi kèm cookie toggle `thumup{id}`/`thumdw{id}` ('y' = đang vote,
+     *    '1' = đã gỡ) — web set cookie này trước mỗi POST, server dùng để
+     *    phân biệt vote mới / hoàn tác. App trước đây không gửi nên hoàn tác
+     *    bị server bỏ qua (SET cùng emotion = no-op).
+     *  - POST đúng 1 lần, body rỗng có Content-Length: 0 (kẻo 411).
+     * @param prevActive trạng thái trước bấm (0/1/7) để gỡ nút đối diện khi đổi phe
+     * @param isUndo true khi bấm lại nút đang active (= gỡ vote)
+     * @return mã HTTP: 200 = đã nhận; khác = lỗi; 0 = lỗi mạng.
      */
     suspend fun setCommentEmotion(objectId: String, commentId: String, like: Boolean,
                                    cookies: Map<String, String>,
                                    pageUrl: String = "$BASE/",
-                                   objectType: String = "1"): Int =
+                                   objectType: String = "1",
+                                   prevActive: Int = 0,
+                                   isUndo: Boolean = false): Int =
         withContext(Dispatchers.IO) {
             val type = if (like) "1" else "7"
+            // Mirror cookie toggle của web (js-cookie, expires dài, path /)
+            try {
+                val cm = android.webkit.CookieManager.getInstance()
+                val sep = "; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/"
+                if (like) {
+                    cm.setCookie(BASE, "thumup$commentId=" + (if (isUndo) "1" else "y") + sep)
+                    if (!isUndo && prevActive == 7)
+                        cm.setCookie(BASE, "thumdw$commentId=1$sep")
+                } else {
+                    cm.setCookie(BASE, "thumdw$commentId=" + (if (isUndo) "1" else "y") + sep)
+                    if (!isUndo && prevActive == 1)
+                        cm.setCookie(BASE, "thumup$commentId=1$sep")
+                }
+                try { cm.flush() } catch (_: Exception) { }
+            } catch (_: Exception) { }
             try {
                 val r = Http.postForm("$BASE/setCommentEmotion/$objectId/$commentId/$type",
                     emptyMap(), pageUrl)
