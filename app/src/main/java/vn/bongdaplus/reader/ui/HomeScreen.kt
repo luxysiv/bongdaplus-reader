@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.material3.*
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -13,6 +14,7 @@ import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -41,19 +43,25 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { vm.cookieProvider = { auth.currentCookies() }; vm.load() }
     val pull = rememberPullRefreshState(refreshing, onRefresh = { vm.load(true) })
+    // Thanh tiêu đề co giãn chuẩn native khi cuộn
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
+            MediumTopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("⚽ ", style = MaterialTheme.typography.titleLarge)
+                        Icon(Icons.Default.SportsSoccer, null,
+                            tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
                         Text("Bóng Đá Plus", fontWeight = FontWeight.Black)
                     }
                 },
                 actions = {
                     IconButton(onClick = onSearch) { Icon(Icons.Default.Search, "Tìm kiếm") }
-                }
+                },
+                scrollBehavior = scrollBehavior
             )
         }
     ) { pad ->

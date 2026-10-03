@@ -84,27 +84,16 @@ fun DetailScreen(
     val cmtCount = detail?.emotion?.comments ?: 0
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(catName(detail?.article?.category ?: article.category), fontWeight = FontWeight.SemiBold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } },
-                actions = {
-                    // Cài đặt đọc báo gom 1 chỗ (Aa) — không còn A-/A+ rải rác
-                    IconButton(onClick = { showReaderSheet = true }) {
-                        Text("Aa", fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary)
-                    }
-                    IconButton(onClick = { share() }) { Icon(Icons.Default.Share, "Chia sẻ") }
-                }
-            )
-        },
+        // Hero tràn viền chuẩn native: bỏ TopBar, dùng nút nổi trên ảnh/đầu trang
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             // Thanh công cụ dưới kiểu app báo: cảm xúc + bình luận + lưu
             if (detail != null) {
                 val d = detail!!
                 Surface(shadowElevation = 8.dp) {
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                        Modifier.fillMaxWidth().navigationBarsPadding()
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         EmotionPill("👍", d.emotion.liked, selected = myEmotion == 1) {
@@ -130,10 +119,15 @@ fun DetailScreen(
             }
         }
     ) { pad ->
-        if (loading && detail == null) {
-            val isVideoGuess = article.category == "video" || article.url.contains("/video/")
-            Box(Modifier.padding(pad)) { DetailSkeleton(isVideoGuess) }
-        } else if (detail != null) {
+        Box(Modifier.padding(pad).fillMaxSize()) {
+            if (loading && detail == null) {
+                val isVideoGuess = article.category == "video" || article.url.contains("/video/")
+                Column {
+                    Spacer(Modifier.statusBarsPadding())
+                    Spacer(Modifier.height(64.dp))
+                    DetailSkeleton(isVideoGuess)
+                }
+            } else if (detail != null) {
             val d = detail!!
             val listState = androidx.compose.foundation.lazy.rememberLazyListState()
             val progress by remember {
@@ -144,7 +138,7 @@ fun DetailScreen(
                     (idx.toFloat() / total).coerceIn(0f, 1f)
                 }
             }
-            Box(Modifier.padding(pad).fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.fillMaxSize(), state = listState) {
                     // ===== VIDEO: player-first =====
                     if (d.isVideo) {
@@ -322,13 +316,23 @@ fun DetailScreen(
                 }
                 LinearProgressIndicator(
                     progress = { progress },
-                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                    modifier = Modifier.fillMaxWidth().statusBarsPadding()
+                        .padding(top = 2.dp).align(Alignment.TopCenter),
                 )
             }
-        } else {
-            Box(Modifier.padding(pad)) {
-                ErrorBox("Không tải được bài viết.", onRetry = { vm.load(article) })
+            } else {
+                Column {
+                    Spacer(Modifier.statusBarsPadding())
+                    Spacer(Modifier.height(64.dp))
+                    ErrorBox("Không tải được bài viết.", onRetry = { vm.load(article) })
+                }
             }
+            // Nút nổi trên hero/đầu trang (luôn hiện, cả khi đang tải)
+            DetailOverlayBar(
+                onBack = onBack,
+                onFont = { showReaderSheet = true },
+                onShare = { share() }
+            )
         }
         if (showReaderSheet) {
             ReaderQuickSettingsSheet(
@@ -367,6 +371,46 @@ private fun EmotionPill(icon: String, count: Int, selected: Boolean, onClick: ()
         onClick = onClick,
         label = { Text("$icon $count") },
         modifier = Modifier.padding(end = 4.dp)
+    )
+}
+
+/**
+ * Nút nổi trên hero/đầu trang kiểu app báo native (Google News):
+ * nền tròn tối mờ nên nổi rõ cả trên ảnh lẫn nền trắng.
+ */
+@Composable
+private fun DetailOverlayBar(
+    onBack: () -> Unit,
+    onFont: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OverlayCircle(onClick = onBack) {
+            Icon(Icons.Default.ArrowBack, "Về", tint = Color.White)
+        }
+        Spacer(Modifier.weight(1f))
+        TextButton(
+            onClick = onFont,
+            modifier = Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.42f)),
+            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+        ) { Text("Aa", fontWeight = FontWeight.Bold) }
+        Spacer(Modifier.width(8.dp))
+        OverlayCircle(onClick = onShare) {
+            Icon(Icons.Default.Share, "Chia sẻ", tint = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun OverlayCircle(onClick: () -> Unit, content: @Composable () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.42f)),
+        content = content
     )
 }
 

@@ -5,6 +5,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import vn.bongdaplus.reader.R
 
 // Xanh lá thương hiệu BongdaPlus
 private val Green40 = Color(0xFF1B7A43)
@@ -29,6 +33,38 @@ private val DarkScheme = darkColorScheme(
     tertiary = Color(0xFFFF8A80),
 )
 
+/**
+ * Be Vietnam Pro — font Việt chuẩn cho toàn bộ giao diện app
+ * (thiết kế riêng cho tiếng Việt, hiện đại hơn Roboto hệ thống).
+ * Nội dung bài đọc vẫn tôn trọng font serif/sans do user chọn.
+ */
+val AppFont = FontFamily(
+    Font(R.font.be_vietnam_pro_regular, FontWeight.Normal),
+    Font(R.font.be_vietnam_pro_medium, FontWeight.Medium),
+    Font(R.font.be_vietnam_pro_semibold, FontWeight.SemiBold),
+    Font(R.font.be_vietnam_pro_bold, FontWeight.Bold),
+)
+
+private val baseTypography = Typography()
+
+private val AppTypography = Typography(
+    displayLarge = baseTypography.displayLarge.copy(fontFamily = AppFont),
+    displayMedium = baseTypography.displayMedium.copy(fontFamily = AppFont),
+    displaySmall = baseTypography.displaySmall.copy(fontFamily = AppFont),
+    headlineLarge = baseTypography.headlineLarge.copy(fontFamily = AppFont),
+    headlineMedium = baseTypography.headlineMedium.copy(fontFamily = AppFont),
+    headlineSmall = baseTypography.headlineSmall.copy(fontFamily = AppFont),
+    titleLarge = baseTypography.titleLarge.copy(fontFamily = AppFont),
+    titleMedium = baseTypography.titleMedium.copy(fontFamily = AppFont, fontWeight = FontWeight.SemiBold),
+    titleSmall = baseTypography.titleSmall.copy(fontFamily = AppFont, fontWeight = FontWeight.SemiBold),
+    bodyLarge = baseTypography.bodyLarge.copy(fontFamily = AppFont),
+    bodyMedium = baseTypography.bodyMedium.copy(fontFamily = AppFont),
+    bodySmall = baseTypography.bodySmall.copy(fontFamily = AppFont),
+    labelLarge = baseTypography.labelLarge.copy(fontFamily = AppFont, fontWeight = FontWeight.SemiBold),
+    labelMedium = baseTypography.labelMedium.copy(fontFamily = AppFont, fontWeight = FontWeight.SemiBold),
+    labelSmall = baseTypography.labelSmall.copy(fontFamily = AppFont, fontWeight = FontWeight.SemiBold),
+)
+
 @Composable
 fun NewsTheme(
     mode: String = "system",
@@ -48,7 +84,7 @@ fun NewsTheme(
         dark -> DarkScheme
         else -> LightScheme
     }
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme, typography = AppTypography, content = content)
 }
 
 /** Màu nhãn NÓNG dùng chung light/dark */

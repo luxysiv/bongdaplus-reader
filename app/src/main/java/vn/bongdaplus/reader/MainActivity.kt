@@ -3,6 +3,11 @@ package vn.bongdaplus.reader
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -66,6 +71,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Chuẩn native: vẽ tràn viền (status/nav bar), Scaffold + M3 tự né insets
+        enableEdgeToEdge()
         if (_deepLink.value == null) _deepLink.value = parseDeepLink(intent)
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
@@ -143,7 +150,20 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { pad ->
-                    NavHost(nav, startDestination = "home", modifier = Modifier.padding(pad)) {
+                    // Chuyển cảnh chuẩn native: màn mới trượt từ phải + mờ dần
+                    NavHost(
+                        nav, startDestination = "home", modifier = Modifier.padding(pad),
+                        enterTransition = {
+                            fadeIn(tween(220)) + slideIntoContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Left, tween(280))
+                        },
+                        exitTransition = { fadeOut(tween(200)) },
+                        popEnterTransition = { fadeIn(tween(220)) },
+                        popExitTransition = {
+                            fadeOut(tween(200)) + slideOutOfContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Right, tween(280))
+                        }
+                    ) {
                         composable("home") {
                             HomeScreen(auth,
                                 onOpen = ::openArticle,

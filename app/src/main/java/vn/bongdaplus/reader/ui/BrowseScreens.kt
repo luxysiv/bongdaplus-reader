@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
@@ -123,18 +124,29 @@ fun SearchScreen(
 
     Scaffold(topBar = {
         TopAppBar(
-            title = {
-                OutlinedTextField(
-                    value = q, onValueChange = vm::setQuery,
-                    placeholder = { Text("Tìm kiếm tin tức…") },
-                    leadingIcon = { Icon(Icons.Default.Search, null) },
-                    singleLine = true, modifier = Modifier.fillMaxWidth()
-                )
-            },
+            title = { Text("Tìm kiếm", fontWeight = FontWeight.Bold) },
             navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } }
         )
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
+            // Thanh tìm kiếm bo tròn chuẩn native (DockedSearchBar thu gọn)
+            DockedSearchBar(
+                query = q,
+                onQueryChange = vm::setQuery,
+                onSearch = vm::setQuery,
+                active = false,
+                onActiveChange = { },
+                placeholder = { Text("Tìm kiếm tin tức…") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                trailingIcon = {
+                    if (q.isNotEmpty()) {
+                        IconButton(onClick = { vm.setQuery("") }) {
+                            Icon(Icons.Default.Close, "Xóa")
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+            ) { }
             if (searching) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (q.trim().length < 2) {
                 Text("Từ khóa nổi bật", fontWeight = FontWeight.Bold,
