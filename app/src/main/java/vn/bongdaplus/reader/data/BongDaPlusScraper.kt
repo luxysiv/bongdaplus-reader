@@ -128,6 +128,41 @@ object BongDaPlusScraper {
             parseCardList(doc, slug)
         }
 
+    /** Con trỏ "Xem thêm" của trang chuyên mục (web thật: #viewmore_type + #viewmore_id).
+     * Trang chủ (tin-moi) không có -> null = hết, không tải thêm được. */
+    data class ViewMoreRef(val type: String, val id: String)
+
+    suspend fun fetchViewMoreRef(slug: String, cookies: Map<String, String> = emptyMap()): ViewMoreRef? =
+        withContext(Dispatchers.IO) {
+            try {
+                val doc = loadDoc("$BASE/$slug", cookies)
+                val t = doc.selectFirst("#viewmore_type")?.attr("value")?.trim().orEmpty()
+                val i = doc.selectFirst("#viewmore_id")?.attr("value")?.trim().orEmpty()
+                if (t.isBlank() || i.isBlank() || i.equals("homepage", true)) null
+                else ViewMoreRef(t, i)
+            } catch (_: Exception) { null }
+        }
+
+    /**
+     * Tải thêm 1 trang tin chuyên mục, y hệt nút "Xem thêm" trên web:
+     * GET /loadviewmore/{type}/{id}/{page} (trang đầu HTML đã là page 1,
+     * JS web tự gọi tiếp page 2 khi mở trang). Hết tin -> trả về rỗng.
+     */
+    suspend fun fetchCategoryMore(
+        ref: ViewMoreRef, page: Int, slug: String?,
+        cookies: Map<String, String> = emptyMap(),
+    ): List<Article> = withContext(Dispatchers.IO) {
+        try {
+            val html = Http.get("$BASE/loadviewmore/${ref.type}/${ref.id}/$page",
+                "$BASE/$slug")?.html
+                ?: Jsoup.connect("$BASE/loadviewmore/${ref.type}/${ref.id}/$page")
+                    .userAgent(UA).timeout(20000).cookies(cookies)
+                    .ignoreContentType(true).get().body().html()
+            if (html.isBlank()) return@withContext emptyList()
+            parseCardList(Jsoup.parseBodyFragment(html, BASE), slug)
+        } catch (_: Exception) { emptyList() }
+    }
+
     // ---------- Chi tiết: parse native blocks từ div.content ----------
 
     private fun parseBlocks(bodyEl: Element): List<ContentBlock> {

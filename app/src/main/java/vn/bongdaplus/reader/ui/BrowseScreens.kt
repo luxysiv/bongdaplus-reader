@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
@@ -76,12 +77,27 @@ fun FeedScreen(
     val loading by vm.loading.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
     val err by vm.error.collectAsState()
+    val loadingMore by vm.loadingMore.collectAsState()
+    val endReached by vm.endReached.collectAsState()
     val savedList by bookmarks.flow().collectAsState(initial = emptyList())
     val savedIds = remember(savedList) { savedList.map { it.id }.toSet() }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(slug) { vm.cookieProvider = { auth.currentCookies() }; vm.load() }
     val pull = rememberPullRefreshState(refreshing, onRefresh = { vm.load(true) })
+    // Kéo gần cuối -> tự tải thêm (như nút "Xem thêm" trên web)
+    val listState = rememberLazyListState()
+    val nearEnd by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            if (total == 0) false
+            else (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= total - 4
+        }
+    }
+    LaunchedEffect(nearEnd) {
+        if (nearEnd && !loading) vm.loadMore()
+    }
 
     Scaffold(topBar = {
         TopAppBar(
@@ -92,7 +108,7 @@ fun FeedScreen(
         Box(Modifier.padding(pad).fillMaxSize().pullRefresh(pull)) {
             if (loading) LoadingSkeleton()
             else if (err != null && list.isEmpty()) ErrorBox(err!!, onRetry = { vm.load() })
-            else LazyColumn(Modifier.fillMaxSize()) {
+            else LazyColumn(Modifier.fillMaxSize(), state = listState) {
                 items(list, key = { it.id }) { a ->
                     NewsRowCard(a, savedIds.contains(a.id), onClick = { onOpen(a) },
                         onToggleSave = { scope.launch { bookmarks.toggle(a) } })
@@ -100,6 +116,24 @@ fun FeedScreen(
                         modifier = Modifier.padding(horizontal = 12.dp),
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                     )
+                }
+                // Chân trang: đang tải thêm / đã hết tin
+                if (loadingMore) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(16.dp),
+                            contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        }
+                    }
+                } else if (endReached && list.isNotEmpty()) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(16.dp),
+                            contentAlignment = Alignment.Center) {
+                            Text("Đã hết tin 🎉",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
                 }
             }
             PullRefreshIndicator(refreshing, pull, Modifier.align(Alignment.TopCenter))

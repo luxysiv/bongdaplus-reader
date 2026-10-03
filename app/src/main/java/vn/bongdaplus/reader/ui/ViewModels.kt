@@ -46,7 +46,7 @@ class HomeViewModel : ViewModel() {
     }
 }
 
-/** Feed 1 chuyên mục */
+/** Feed 1 chuyên mục (kéo xuống tự tải thêm như nút "Xem thêm" trên web) */
 class FeedViewModel(val slug: String) : ViewModel() {
     var cookieProvider: () -> Map<String, String> = { emptyMap() }
     private val _articles = MutableStateFlow<List<Article>>(emptyList())
@@ -57,18 +57,62 @@ class FeedViewModel(val slug: String) : ViewModel() {
     val refreshing: StateFlow<Boolean> = _refreshing
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
+    // Phân trang "Xem thêm"
+    private var moreRef: BongDaPlusScraper.ViewMoreRef? = null
+    private var page = 1
+    private val _loadingMore = MutableStateFlow(false)
+    val loadingMore: StateFlow<Boolean> = _loadingMore
+    private val _endReached = MutableStateFlow(false)
+    val endReached: StateFlow<Boolean> = _endReached
 
     fun load(isRefresh: Boolean = false) {
         viewModelScope.launch {
             if (isRefresh) _refreshing.value = true else _loading.value = true
             _error.value = null
+            page = 1
+            _endReached.value = false
+            moreRef = null
             try {
-                _articles.value = if (slug == "tin-moi") BongDaPlusScraper.fetchHome(cookiesOf(cookieProvider))
-                else BongDaPlusScraper.fetchCategory(slug, cookiesOf(cookieProvider))
+                val ck = cookiesOf(cookieProvider)
+                _articles.value = if (slug == "tin-moi") BongDaPlusScraper.fetchHome(ck)
+                else BongDaPlusScraper.fetchCategory(slug, ck)
+                // Trang chủ không có viewmore -> chỉ 1 trang
+                moreRef = if (slug == "tin-moi") null
+                else try { BongDaPlusScraper.fetchViewMoreRef(slug, ck) } catch (_: Exception) { null }
+                if (moreRef == null && slug != "tin-moi" && _articles.value.isNotEmpty()) {
+                    // Không đọc được con trỏ viewmore: coi như hết để khỏi gọi vô ích
+                    _endReached.value = true
+                }
             } catch (e: Exception) {
                 _error.value = "Không tải được tin: ${e.message?.take(100)}"
             }
             _loading.value = false; _refreshing.value = false
+        }
+    }
+
+    /** Kéo tới cuối list -> tự gọi. Hết tin (rỗng/toàn trùng) -> dừng. */
+    fun loadMore() {
+        val ref = moreRef ?: return
+        if (_loading.value || _loadingMore.value || _endReached.value) return
+        viewModelScope.launch {
+            _loadingMore.value = true
+            try {
+                val next = page + 1
+                val more = BongDaPlusScraper.fetchCategoryMore(
+                    ref, next, slug, cookiesOf(cookieProvider))
+                if (more.isEmpty()) {
+                    _endReached.value = true
+                } else {
+                    val ids = _articles.value.map { it.id }.toSet()
+                    val fresh = more.filter { it.id !in ids }
+                    if (fresh.isEmpty()) _endReached.value = true
+                    else {
+                        page = next
+                        _articles.value = _articles.value + fresh
+                    }
+                }
+            } catch (_: Exception) { }
+            _loadingMore.value = false
         }
     }
 }
