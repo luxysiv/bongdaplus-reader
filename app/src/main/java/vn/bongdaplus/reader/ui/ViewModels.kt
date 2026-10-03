@@ -463,12 +463,14 @@ class ScoresViewModel : ViewModel() {
             }
             1 -> {
                 val list = (if (key == null) aggRes else aggRes.filter { it.compSlug == key })
+                    .distinctBy { it.id }
                     .sortedByDescending { it.startTime }
                 _matches.value = list
                 if (list.isEmpty()) _error.value = "Chưa có kết quả."
             }
             else -> {
-                val list = if (key == null) aggFix else aggFix.filter { it.compSlug == key }
+                val list = (if (key == null) aggFix else aggFix.filter { it.compSlug == key })
+                    .distinctBy { it.id }
                 _matches.value = list.sortedWith(
                     compareBy<ScoreMatch> { if (!it.isUpcoming && !it.isFinished) 0 else 1 }
                         .thenBy { it.startTime })

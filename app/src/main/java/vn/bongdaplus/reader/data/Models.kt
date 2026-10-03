@@ -100,8 +100,8 @@ val CATEGORY_GROUPS = listOf(
     CategoryGroup("Tin mới", listOf(
         Category("Mới nhất", "tin-moi"),
         Category("Điểm tin", "diem-tin"),
-        Category("Bóng đá & Cuộc sống", "bong-da-cuoc-song"),
         Category("Big Story", "bigstory"),
+        Category("Thế giới", "bong-da-the-gioi"),
     )),
     CategoryGroup("Bóng đá Việt Nam", listOf(
         Category("Việt Nam", "bong-da-viet-nam"),
@@ -154,11 +154,6 @@ val CATEGORY_GROUPS = listOf(
     )),
     CategoryGroup("Chuyển nhượng", listOf(
         Category("Chuyển nhượng", "tin-chuyen-nhuong"),
-    )),
-    CategoryGroup("Chuyên đề", listOf(
-        Category("Nhận định", "nhan-dinh-bong-da-tags"),
-        Category("Hậu trường", "hau-truong-bong-da"),
-        Category("Thế giới", "bong-da-the-gioi"),
     )),
     CategoryGroup("Multimedia", listOf(
         Category("Video", "video"),

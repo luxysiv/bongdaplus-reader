@@ -239,7 +239,9 @@ private fun StandingsTable(rows: List<StandingRow>) {
             }
             HorizontalDivider()
         }
-        items(rows, key = { it.pos }) { r ->
+        // key theo index (không theo pos: BXH chia bảng có pos lặp lại -> crash key trùng)
+        items(rows.size) { i ->
+            val r = rows[i]
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
