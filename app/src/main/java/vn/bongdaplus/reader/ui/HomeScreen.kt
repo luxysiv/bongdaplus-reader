@@ -94,7 +94,25 @@ fun HomeScreen(
                         Spacer(Modifier.height(8.dp))
                     }
                     item { SectionHeader("Tin mới nhất", "Xem thêm") { onFeed("tin-moi") } }
-                    items(latest, key = { it.id }) { a ->
+                    // Chuẩn 1 kiểu như các mục: có ảnh vào ô lưới, không ảnh vào danh sách
+                    val newPhotos = latest.filter { !it.imageUrl.isNullOrBlank() }
+                    val newText = latest.filter { it.imageUrl.isNullOrBlank() }
+                    if (newPhotos.isNotEmpty()) {
+                        items(newPhotos.chunked(2), key = { it.first().id }) { pair ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                pair.forEach { a ->
+                                    HomeGridCell(a, onClick = { onOpen(a) },
+                                        modifier = Modifier.weight(1f))
+                                }
+                                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(10.dp))
+                        }
+                    }
+                    items(newText, key = { it.id }) { a ->
                         NewsRowCard(a, onClick = { onOpen(a) })
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 12.dp),
