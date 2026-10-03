@@ -118,6 +118,15 @@ fun String.nfcVi(): String = try {
     java.text.Normalizer.normalize(this, java.text.Normalizer.Form.NFC)
 } catch (_: Exception) { this }
 
+/**
+ * Giải HTML entities thô (vd M&#x1EA1;nh -> Mạnh).
+ * Regex đọc trên HTML thô không tự giải entity như Jsoup text(), nên tên
+ * lấy bằng regex (tên hiển thị sau đăng nhập, tác giả...) phải qua hàm này.
+ */
+fun String.unescapeHtml(): String = try {
+    org.jsoup.parser.Parser.unescapeEntities(this, false)
+} catch (_: Exception) { this }
+
 /** Cache RAM: prefill chi tiết khi bấm từ list để khỏi chờ load */
 object ArticleCache {
     private val map = LinkedHashMap<String, Article>()

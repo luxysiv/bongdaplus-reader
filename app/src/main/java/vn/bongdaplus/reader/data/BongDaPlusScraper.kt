@@ -290,7 +290,8 @@ object BongDaPlusScraper {
                 ld.substringAfter("\"author\"").take(300)
             )?.groupValues?.get(1)
                 ?: doc.selectFirst(".author-name, .author, .author-info .name")?.text()?.trim()?.ifBlank { null }
-                ?: doc.selectFirst("meta[name=author]")?.attr("content")?.ifBlank { null })?.nfc()
+                ?: doc.selectFirst("meta[name=author]")?.attr("content")?.ifBlank { null })
+                ?.unescapeHtml()?.nfc()
             // Avatar + chức danh tác giả từ khối ld+json Person thứ 2 (web thật có)
             val personLd = doc.select("script[type=application/ld+json]").map { it.html() }
                 .firstOrNull { it.contains("\"Person\"") && it.contains("jobTitle") } ?: ""
@@ -307,7 +308,8 @@ object BongDaPlusScraper {
             // Sapo (đoạn mở đầu in đậm kiểu báo): og:description / ld description / h2.sapo
             val sapo = (doc.selectFirst("h2.sapo, .sapo, .lead, .summary")?.text()?.trim()?.takeIf { it.length > 10 }
                 ?: Regex("\"description\"\\s*:\\s*\"([^\"]{20,500})\"").find(ld)?.groupValues?.get(1)?.trim()
-                ?: doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty()).nfc()
+                ?: doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim().orEmpty())
+                .unescapeHtml().nfc()
             // Tags bài viết: CHỈ trong div.hash-tags của bài (web thật).
             // Không dùng a[href*=-tags] toàn trang vì dính link menu
             // (nhan-dinh-bong-da-tags, cup-lien-doan-phap-tags...).
@@ -910,9 +912,12 @@ object BongDaPlusScraper {
             val p = Http.get("https://member.bongdaplus.vn/Identity/Account/Manage")
                 ?: return@withContext ""
             if (p.bouncedToLogin()) return@withContext ""
+            // Regex đọc HTML thô nên tên còn nguyên entity (M&#x1EA1;nh) ->
+            // phải giải entity rồi mới chuẩn hóa NFC, kẻo hiện mã thô như lỗi font.
             (Regex("Xin chào\\s*<b>([^<]{1,40})</b>").find(p.html)?.groupValues?.get(1)?.trim()
                 ?: Regex("Xin chào\\s+([^\\n<]{1,40})").find(
-                    Jsoup.parse(p.html).body().text())?.groupValues?.get(1)?.trim().orEmpty()).nfc()
+                    Jsoup.parse(p.html).body().text())?.groupValues?.get(1)?.trim().orEmpty())
+                .unescapeHtml().nfc()
         } catch (_: Exception) { "" }
     }
 

@@ -31,7 +31,11 @@ class AuthManager(private val ctx: Context) {
     }
 
     val loggedIn: Flow<Boolean> = ctx.appPrefs.data.map { it[KEY_LOGGED] == true }
-    val email: Flow<String> = ctx.appPrefs.data.map { it[KEY_EMAIL] ?: "" }
+    // Giải entity + chuẩn hóa NFC khi đọc: tên lưu từ trước có thể còn mã thô
+    // (M&#x1EA1;nh) do regex đọc HTML thô — sửa ngay cả khi chưa đăng nhập lại.
+    val email: Flow<String> = ctx.appPrefs.data.map {
+        (it[KEY_EMAIL] ?: "").unescapeHtml().nfcVi()
+    }
     val followSlugs: Flow<Set<String>> = ctx.appPrefs.data.map {
         it[KEY_FOLLOW] ?: setOf("tin-moi", "bong-da-viet-nam", "ngoai-hang-anh")
     }
@@ -46,7 +50,7 @@ class AuthManager(private val ctx: Context) {
     suspend fun markLoggedIn(emailGuess: String = "") {
         ctx.appPrefs.edit {
             it[KEY_LOGGED] = true
-            if (emailGuess.isNotBlank()) it[KEY_EMAIL] = emailGuess
+            if (emailGuess.isNotBlank()) it[KEY_EMAIL] = emailGuess.unescapeHtml().nfcVi()
         }
     }
 
