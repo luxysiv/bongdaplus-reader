@@ -4,16 +4,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
@@ -28,62 +22,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import vn.bongdaplus.reader.data.*
-
-// ---------- Tab Chuyên mục: menu ĐỘNG theo web (chỉ bóng đá) ----------
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ExploreScreen(onFeed: (String) -> Unit) {
-    val vm: ExploreViewModel = viewModel()
-    val groups by vm.groups.collectAsState()
-    val loading by vm.loading.collectAsState()
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text("Chuyên mục", fontWeight = FontWeight.Bold) },
-            actions = { IconButton(onClick = { vm.load(force = true) }) { Icon(Icons.Default.Refresh, "Tải lại menu") } }
-        )
-    }) { pad ->
-        if (loading && groups.isEmpty()) {
-            Box(Modifier.padding(pad)) { LoadingSkeleton(6) }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.padding(pad).fillMaxSize(),
-                contentPadding = PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                groups.forEach { g ->
-                    item(span = { GridItemSpan(2) }) {
-                        Text(g.name.uppercase(), fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 6.dp))
-                    }
-                    items(g.cats) { c ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth().height(72.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
-                            onClick = { onFeed(c.slug) }
-                        ) {
-                            Row(
-                                Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(c.name, fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.weight(1f))
-                                Icon(Icons.Default.ChevronRight, null,
-                                    tint = MaterialTheme.colorScheme.outline)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ---------- Feed 1 chuyên mục ----------
 

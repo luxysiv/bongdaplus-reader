@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.material3.*
@@ -46,7 +45,6 @@ private fun parseDeepLink(intent: android.content.Intent?): DeepLink? {
 }
 private val TABS = listOf(
     Tab("home", "Trang chủ", Icons.Default.Home),
-    Tab("explore", "Chuyên mục", Icons.Default.List),
     Tab("scores", "Tỉ số", Icons.Default.SportsSoccer),
     Tab("account", "Tài khoản", Icons.Default.Person),
 )
@@ -152,9 +150,6 @@ class MainActivity : ComponentActivity() {
                                 onSearch = { nav.navigate("search") },
                                 onFeed = { nav.navigate("feed/$it") },
                                 onLogin = { nav.navigate("login") })
-                        }
-                        composable("explore") {
-                            ExploreScreen(onFeed = { nav.navigate("feed/$it") })
                         }
                         composable("scores") {
                             ScoresScreen()

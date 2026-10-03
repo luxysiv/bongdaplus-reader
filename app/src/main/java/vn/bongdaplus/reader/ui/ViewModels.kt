@@ -23,7 +23,7 @@ class HomeViewModel : ViewModel() {
     private val _articles = MutableStateFlow<List<Article>>(emptyList())
     private val _mostRead = MutableStateFlow<List<Article>>(emptyList())
     val mostRead: StateFlow<List<Article>> = _mostRead
-    /** Khối tiêu điểm từng chuyên mục chính (slug -> top tin). */
+    /** Khối mục hiện thẳng trên Main (slug -> top tin). */
     private val _blocks = MutableStateFlow<List<Pair<String, List<Article>>>>(emptyList())
     val blocks: StateFlow<List<Pair<String, List<Article>>>> = _blocks
     private val _loading = MutableStateFlow(true)
@@ -38,9 +38,10 @@ class HomeViewModel : ViewModel() {
         "bong-da-viet-nam", "ngoai-hang-anh", "champions-league-cup-c1",
         "tin-chuyen-nhuong", "europa-league", "video"
     )
-    /** 3 khối tiêu điểm hiện tên ở Main. */
+    /** 4 mục hiện thẳng trên Main (thay tab Chuyên mục). */
     private val blockSlugs = listOf(
-        "ngoai-hang-anh", "champions-league-cup-c1", "bong-da-viet-nam"
+        "bong-da-viet-nam", "ngoai-hang-anh",
+        "champions-league-cup-c1", "tin-chuyen-nhuong"
     )
 
     val breaking: StateFlow<List<Article>> = _articles.map { l ->
@@ -87,7 +88,7 @@ class HomeViewModel : ViewModel() {
                     }
                     _blocks.value = blockSlugs.mapNotNull { slug ->
                         val list = perCat.firstOrNull { it.first == slug }?.second
-                            .orEmpty().take(4)
+                            .orEmpty().take(5)
                         if (list.isEmpty()) null else slug to list
                     }
                 } catch (_: Exception) { }
@@ -97,32 +98,6 @@ class HomeViewModel : ViewModel() {
                 _error.value = "Không tải được tin: ${e.message?.take(100)}"
             }
             _loading.value = false; _refreshing.value = false
-        }
-    }
-}
-
-/** Tab Chuyên mục: menu động theo web (rớt mạng dùng menu tĩnh dự phòng). */
-class ExploreViewModel : ViewModel() {
-    val groups: StateFlow<List<CategoryGroup>> = MenuRepository.groups
-    private val _loading = MutableStateFlow(false)
-    val loading: StateFlow<Boolean> = _loading
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error
-
-    init {
-        load()
-    }
-
-    fun load(force: Boolean = false) {
-        viewModelScope.launch {
-            _loading.value = true
-            _error.value = null
-            try {
-                MenuRepository.refresh(force)
-            } catch (e: Exception) {
-                _error.value = "Không tải được menu: ${e.message?.take(80)}"
-            }
-            _loading.value = false
         }
     }
 }

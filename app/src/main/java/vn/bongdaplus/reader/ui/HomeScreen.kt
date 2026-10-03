@@ -85,27 +85,6 @@ fun HomeScreen(
                         FeaturedPager(featured, onOpen)
                         Spacer(Modifier.height(8.dp))
                     }
-                    item {
-                        // Chip giải chính (y menu web)
-                        val quickSlugs = listOf(
-                            "bong-da-viet-nam", "ngoai-hang-anh", "tin-chuyen-nhuong",
-                            "champions-league-cup-c1", "europa-league", "nations-league",
-                            "la-liga", "bundesliga"
-                        )
-                        val quick = quickSlugs.mapNotNull { s -> CATEGORIES.find { it.slug == s } }
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        ) {
-                            items(quick) { c ->
-                                FilterChip(
-                                    selected = false, onClick = { onFeed(c.slug) },
-                                    label = { Text(c.name) }
-                                )
-                            }
-                        }
-                    }
                     item { SectionHeader("Tin mới nhất", "Xem thêm") { onFeed("tin-moi") } }
                     items(latest, key = { it.id }) { a ->
                         NewsRowCard(a, onClick = { onOpen(a) })
@@ -141,17 +120,52 @@ fun HomeScreen(
                             )
                         }
                     }
-                    // Tiêu điểm từng chuyên mục chính (Main tự dựng, đầy tin)
+                    // Các mục trên Main (thay tab Chuyên mục): mỗi mục vài bài
+                    // tiêu biểu, bấm vào đọc tiếp. List và ô lưới đan xen.
                     blocks.forEach { (slug, list) ->
-                        item {
-                            SectionHeader(catName(slug), "Xem thêm") { onFeed(slug) }
-                        }
-                        items(list, key = { it.id }) { a ->
-                            NewsRowCard(a, onClick = { onOpen(a) })
-                            HorizontalDivider(
-                                modifier = Modifier.padding(horizontal = 12.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            )
+                        when (slug) {
+                            // Việt Nam: 1 thẻ lớn + list
+                            "bong-da-viet-nam" -> {
+                                item { SectionHeader(catName(slug), "Xem thêm") { onFeed(slug) } }
+                                if (list.isNotEmpty()) {
+                                    item { HomeFeatureCard(list.first(), onClick = { onOpen(list.first()) }) }
+                                }
+                                items(list.drop(1), key = { it.id }) { a ->
+                                    NewsRowCard(a, onClick = { onOpen(a) })
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 12.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                            // NHA + C1: ô lưới 2 cột
+                            "ngoai-hang-anh", "champions-league-cup-c1" -> {
+                                item { SectionHeader(catName(slug), "Xem thêm") { onFeed(slug) } }
+                                items(list.chunked(2)) { pair ->
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        pair.forEach { a ->
+                                            HomeGridCell(a, onClick = { onOpen(a) },
+                                                modifier = Modifier.weight(1f))
+                                        }
+                                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                                    }
+                                    Spacer(Modifier.height(10.dp))
+                                }
+                            }
+                            // Còn lại: danh sách
+                            else -> {
+                                item { SectionHeader(catName(slug), "Xem thêm") { onFeed(slug) } }
+                                items(list, key = { it.id }) { a ->
+                                    NewsRowCard(a, onClick = { onOpen(a) })
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 12.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
                         }
                     }
                     item { Spacer(Modifier.height(12.dp)) }
