@@ -6,6 +6,7 @@ import android.content.Intent
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import vn.bongdaplus.reader.data.Article
 import vn.bongdaplus.reader.data.BongDaPlusScraper
@@ -35,7 +36,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                             val store = BookmarkStore(ctx.applicationContext)
                             store.toggle(a)
                             val saved = try {
-                                kotlinx.coroutines.flow.first(store.flow()).any { it.id == a.id }
+                                store.flow().first().any { it.id == a.id }
                             } catch (_: Exception) { true }
                             Toast.makeText(
                                 ctx.applicationContext,
