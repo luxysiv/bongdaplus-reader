@@ -590,8 +590,8 @@ object BongDaPlusScraper {
                 .userAgent(UA).timeout(15000).cookies(cookies)
                 .header("X-Requested-With", "XMLHttpRequest")
                 .header("Origin", BASE).referrer(referer)
-                .ignoreContentType(true).post()
-            if (isLoginPage(res.body().text())) 0 else res.statusCode()
+                .ignoreContentType(true).execute()
+            if (isLoginPage(res.body())) 0 else res.statusCode()
         } catch (_: Exception) { 0 }
     }
 

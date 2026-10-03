@@ -9,6 +9,7 @@ import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
@@ -93,8 +94,8 @@ object Http {
                 (code == 401 || code == 403)
     }
 
-    private val FORM_CT: MediaType? =
-        MediaType.parse("application/x-www-form-urlencoded; charset=UTF-8")
+    private val FORM_CT: MediaType =
+        "application/x-www-form-urlencoded; charset=UTF-8".toMediaType()
 
     suspend fun postForm(
         url: String, params: Map<String, String>, referer: String,
