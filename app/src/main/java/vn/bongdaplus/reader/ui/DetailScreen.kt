@@ -33,7 +33,8 @@ import vn.bongdaplus.reader.data.*
 /**
  * Trang chi tiết hiện đại kiểu báo điện tử:
  * chip chuyên mục + tiêu đề lớn + sapo + byline tác giả + hero + body + tags +
- * cảm xúc pill + bình luận + tin liên quan carousel + thanh công cụ dưới.
+ * tin liên quan carousel + thanh công cụ dưới (cảm xúc + mở khung bình luận).
+ * Bình luận nằm trong bottom-sheet riêng (vừa đọc vừa gửi), không lẫn vào bài.
  * Bài video (/video/...) dùng layout player-first riêng.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,10 +53,6 @@ fun DetailScreen(
     val detail by vm.detail.collectAsState()
     val related by vm.related.collectAsState()
     val loading by vm.loading.collectAsState()
-    val comments by vm.comments.collectAsState()
-    val loadingComments by vm.loadingComments.collectAsState()
-    val sending by vm.sending.collectAsState()
-    val sendMsg by vm.sendMsg.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val savedList by bookmarks.flow().collectAsState(initial = emptyList())
@@ -65,10 +62,8 @@ fun DetailScreen(
     val readerFont by prefs.readerFont.collectAsState(initial = "serif")
     val lineSpace by prefs.lineSpace.collectAsState(initial = 1f)
     val bodyFont = if (readerFont == "serif") FontFamily.Serif else FontFamily.Default
-    var draft by remember { mutableStateOf("") }
-    var replyTo by remember { mutableStateOf<Comment?>(null) }
     var showReaderSheet by remember { mutableStateOf(false) }
-    val myVotes by vm.myVotes.collectAsState()
+    var showComments by remember { mutableStateOf(false) }
     val myEmotion by vm.myEmotion.collectAsState()
     val trackStore = remember(ctx) { CommentTrackStore(ctx.applicationContext) }
 
@@ -130,7 +125,7 @@ fun DetailScreen(
                         }
                         Spacer(Modifier.weight(1f))
                         AssistChip(
-                            onClick = { },
+                            onClick = { showComments = true },
                             label = { Text("💬 $cmtCount") },
                             modifier = Modifier.padding(end = 4.dp)
                         )
@@ -314,80 +309,6 @@ fun DetailScreen(
                             }
                         }
                     }
-                    // Bình luận
-                    item { SectionHeader("Bình luận ($cmtCount)") }
-                    if (loadingComments && comments.isEmpty()) {
-                        item { LoadingSkeleton(2) }
-                    } else if (comments.isEmpty()) {
-                        item { EmptyState("Chưa có bình luận. Hãy là người đầu tiên!") }
-                    } else {
-                        items(comments, key = { it.id }) { c ->
-                            ModernCommentCard(c, fontScale,
-                                voted = myVotes[c.id] ?: 0,
-                                canVote = logged,
-                                bodyFont = bodyFont, lineSpace = lineSpace,
-                                onLike = { vm.reactComment(c.id, true) },
-                                onDislike = { vm.reactComment(c.id, false) },
-                                onReply = { replyTo = c })
-                        }
-                    }
-                    // Hộp gửi
-                    item {
-                        Column(Modifier.padding(12.dp)) {
-                            if (logged) {
-                                replyTo?.let { r ->
-                                    Row(verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(bottom = 6.dp)) {
-                                        Text("↩️ Trả lời @${r.name.trim()}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.weight(1f))
-                                        TextButton(onClick = { replyTo = null }) { Text("Huỷ") }
-                                    }
-                                }
-                                OutlinedTextField(
-                                    value = draft, onValueChange = { if (it.length <= 1000) draft = it },
-                                    placeholder = { Text(if (replyTo != null) "Trả lời ${replyTo?.name}… (cần duyệt)" else "Chia sẻ suy nghĩ của bạn… (cần duyệt)") },
-                                    modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 5,
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    sendMsg?.let {
-                                        Text(it, style = MaterialTheme.typography.bodySmall,
-                                            color = if (it.startsWith("Đã gửi")) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.weight(1f))
-                                    } ?: Spacer(Modifier.weight(1f))
-                                    Spacer(Modifier.width(8.dp))
-                                    Button(
-                                        onClick = {
-                                            val txt = draft
-                                            val rt = replyTo
-                                            scope.launch {
-                                                vm.sendComment(txt, article, trackStore,
-                                                    parentId = rt?.id ?: "0",
-                                                    replyId = "0",
-                                                    replyName = rt?.name ?: "")
-                                                try { if (!isSaved) bookmarks.toggle(article) } catch (_: Exception) { }
-                                            }
-                                            draft = ""; replyTo = null
-                                        },
-                                        enabled = !sending && draft.isNotBlank()
-                                    ) { Text(if (sending) "Đang gửi…" else if (replyTo != null) "Trả lời" else "Gửi") }
-                                }
-                            } else {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth().clickable(onClick = onLogin),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer)
-                                ) {
-                                    Text("🔐 Đăng nhập để bình luận với tài khoản BongdaPlus",
-                                        modifier = Modifier.padding(14.dp))
-                                }
-                            }
-                        }
-                    }
                     // Tin liên quan carousel ngang (hiện đại hơn list dọc cũ)
                     if (related.isNotEmpty()) {
                         item { SectionHeader("Tin liên quan", "Xem thêm") { } }
@@ -422,6 +343,29 @@ fun DetailScreen(
                 onDismiss = { showReaderSheet = false }
             )
         }
+        if (showComments && detail != null) {
+            CommentsBottomSheet(
+                vm = vm,
+                article = article,
+                cmtCount = cmtCount,
+                logged = logged,
+                fontScale = fontScale,
+                bodyFont = bodyFont,
+                lineSpace = lineSpace,
+                onLogin = { showComments = false; onLogin() },
+                onSend = { text, rt ->
+                    scope.launch {
+                        vm.sendComment(text, article, trackStore,
+                            parentId = rt?.id ?: "0",
+                            replyId = "0",
+                            replyName = rt?.name ?: "")
+                        // Tự lưu tin để Worker luôn quét, kể cả user quên bấm Lưu
+                        try { if (!isSaved) bookmarks.toggle(article) } catch (_: Exception) { }
+                    }
+                },
+                onDismiss = { showComments = false }
+            )
+        }
     }
 }
 
@@ -435,9 +379,114 @@ private fun EmotionPill(icon: String, count: Int, selected: Boolean, onClick: ()
     )
 }
 
+/**
+ * Khung bình luận chuẩn app: bottom-sheet vừa đọc list vừa gửi nhận xét.
+ * Mở bằng nút 💬 ở thanh công cụ dưới bài viết.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VideoTitleBlock(d: ArticleDetail, fontScale: Float) {
-    Surface(color = MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(6.dp)) {
+private fun CommentsBottomSheet(
+    vm: DetailViewModel,
+    cmtCount: Int,
+    logged: Boolean,
+    fontScale: Float,
+    bodyFont: FontFamily,
+    lineSpace: Float,
+    onLogin: () -> Unit,
+    onSend: (String, Comment?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val comments by vm.comments.collectAsState()
+    val loadingComments by vm.loadingComments.collectAsState()
+    val sending by vm.sending.collectAsState()
+    val sendMsg by vm.sendMsg.collectAsState()
+    val myVotes by vm.myVotes.collectAsState()
+    var draft by remember { mutableStateOf("") }
+    var replyTo by remember { mutableStateOf<Comment?>(null) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxHeight(0.92f)) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Bình luận ($cmtCount)", fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f))
+                IconButton(onClick = { vm.loadComments() }) {
+                    Icon(Icons.Default.Refresh, "Tải lại")
+                }
+            }
+            HorizontalDivider()
+            LazyColumn(Modifier.weight(1f)) {
+                if (loadingComments && comments.isEmpty()) {
+                    item { LoadingSkeleton(2) }
+                } else if (comments.isEmpty()) {
+                    item { EmptyState("Chưa có bình luận. Hãy là người đầu tiên!") }
+                } else {
+                    items(comments, key = { it.id }) { c ->
+                        ModernCommentCard(c, fontScale,
+                            voted = myVotes[c.id] ?: 0,
+                            canVote = logged,
+                            bodyFont = bodyFont, lineSpace = lineSpace,
+                            onLike = { vm.reactComment(c.id, true) },
+                            onDislike = { vm.reactComment(c.id, false) },
+                            onReply = { replyTo = c })
+                    }
+                    item { Spacer(Modifier.height(8.dp)) }
+                }
+            }
+            HorizontalDivider()
+            Column(Modifier.padding(12.dp).imePadding()) {
+                if (logged) {
+                    replyTo?.let { r ->
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 6.dp)) {
+                            Text("↩️ Trả lời @${r.name.trim()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f))
+                            TextButton(onClick = { replyTo = null }) { Text("Huỷ") }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = draft,
+                            onValueChange = { if (it.length <= 1000) draft = it },
+                            placeholder = { Text(if (replyTo != null) "Trả lời… (cần duyệt)" else "Viết bình luận… (cần duyệt)") },
+                            modifier = Modifier.weight(1f),
+                            maxLines = 4,
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        FilledIconButton(
+                            onClick = { onSend(draft, replyTo); draft = ""; replyTo = null },
+                            enabled = !sending && draft.isNotBlank()
+                        ) { Icon(Icons.Default.Send, "Gửi") }
+                    }
+                    sendMsg?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall,
+                            color = if (it.startsWith("Đã gửi")) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 6.dp))
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onLogin),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Text("🔐 Đăng nhập để bình luận với tài khoản BongdaPlus",
+                            modifier = Modifier.padding(14.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoTitleBlock(d: ArticleDetail, fontScale: Float) {    Surface(color = MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(6.dp)) {
         Text("VIDEO", color = Color.White, fontWeight = FontWeight.Black,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
