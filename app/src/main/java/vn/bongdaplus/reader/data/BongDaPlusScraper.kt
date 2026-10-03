@@ -140,6 +140,45 @@ object BongDaPlusScraper {
             parseCardList(doc, null)
         }
 
+    /** Toàn bộ khối chính trang chủ trong 1 lần tải: dòng tin + tab "Đọc nhiều". */
+    data class HomeSections(
+        val articles: List<Article>,
+        val mostRead: List<Article>,
+    )
+
+    suspend fun fetchHomeSections(cookies: Map<String, String> = emptyMap()): HomeSections =
+        withContext(Dispatchers.IO) {
+            val doc = loadDoc("$BASE/", cookies)
+            HomeSections(parseCardList(doc, null), parseMostRead(doc))
+        }
+
+    /**
+     * Tab "Đọc nhiều" trong khối mix-tops trang chủ (tab-pane đầu tiên).
+     * Chỉ tin bóng đá lõi — bỏ qua các box bên lề (Nhận định, Hậu trường...).
+     */
+    fun parseMostRead(doc: org.jsoup.nodes.Document): List<Article> {
+        return try {
+            val pane = doc.select("div.mix-tops div.tab-pane").firstOrNull()
+                ?: return emptyList()
+            val out = LinkedHashMap<String, Article>()
+            for (li in pane.select("li.news")) {
+                val a = li.selectFirst("a.title") ?: continue
+                val href = a.attr("href").trim()
+                if (href.isEmpty() || !href.contains(".html")) continue
+                val url = absUrl(href)
+                if (!url.contains("bongdaplus.vn")) continue
+                a.select(".comm-lnk").remove()
+                val title = a.attr("title").ifBlank { a.text().trim() }.nfc()
+                if (title.length < 12) continue
+                val id = idFromUrl(url)
+                if (out.containsKey(id)) continue
+                out[id] = Article(id, title, url)
+                if (out.size >= 10) break
+            }
+            out.values.toList()
+        } catch (_: Exception) { emptyList() }
+    }
+
     suspend fun fetchCategory(slug: String, cookies: Map<String, String> = emptyMap()): List<Article> =
         withContext(Dispatchers.IO) {
             val doc = loadDoc("$BASE/$slug", cookies)

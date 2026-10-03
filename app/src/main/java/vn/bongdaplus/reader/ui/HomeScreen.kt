@@ -33,6 +33,8 @@ fun HomeScreen(
     val breaking by vm.breaking.collectAsState()
     val featured by vm.featured.collectAsState()
     val latest by vm.latest.collectAsState()
+    val videos by vm.videos.collectAsState()
+    val mostRead by vm.mostRead.collectAsState()
     val loading by vm.loading.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
     val err by vm.error.collectAsState()
@@ -102,7 +104,7 @@ fun HomeScreen(
                         }
                     }
                     item { SectionHeader("Tin mới nhất", "Xem thêm") { onFeed("tin-moi") } }
-                    items(latest, key = { it.id }) { a ->
+                    items(latest.take(10), key = { it.id }) { a ->
                         NewsRowCard(a, savedIds.contains(a.id), onClick = { onOpen(a) },
                             onToggleSave = { scope.launch { bookmarks.toggle(a) } })
                         HorizontalDivider(
@@ -110,6 +112,34 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                         )
                     }
+                    // Highlight & Video: chỉ tin bóng đá lõi (không Nhận định/Hậu trường)
+                    if (videos.isNotEmpty()) {
+                        item { SectionHeader("🎬 Highlight & Video", "Xem thêm") { onFeed("video") } }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            ) {
+                                items(videos, key = { it.id }) { v ->
+                                    VideoRailCard(v, onClick = { onOpen(v) })
+                                }
+                            }
+                        }
+                    }
+                    // Đọc nhiều: top 5 tab web, số thứ hạng tách biệt tiêu đề
+                    if (mostRead.isNotEmpty()) {
+                        val top5 = mostRead.take(5)
+                        item { SectionHeader("🔥 Đọc nhiều") }
+                        items(top5.size) { i ->
+                            MostReadRow(i + 1, top5[i], onClick = { onOpen(top5[i]) })
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                    item { Spacer(Modifier.height(12.dp)) }
                 }
             }
             PullRefreshIndicator(refreshing, pull, Modifier.align(Alignment.TopCenter))

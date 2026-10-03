@@ -11,10 +11,12 @@ import vn.bongdaplus.reader.data.*
 private fun cookiesOf(provider: () -> Map<String, String>): Map<String, String> =
     try { provider() } catch (_: Exception) { emptyMap() }
 
-/** Trang chủ: 1 list tin-moi -> breaking(3) + featured(có ảnh, 5) + latest */
+/** Trang chủ: 1 lần tải -> breaking + featured + latest + video + đọc nhiều */
 class HomeViewModel : ViewModel() {
     var cookieProvider: () -> Map<String, String> = { emptyMap() }
     private val _articles = MutableStateFlow<List<Article>>(emptyList())
+    private val _mostRead = MutableStateFlow<List<Article>>(emptyList())
+    val mostRead: StateFlow<List<Article>> = _mostRead
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
     private val _refreshing = MutableStateFlow(false)
@@ -29,7 +31,11 @@ class HomeViewModel : ViewModel() {
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val latest: StateFlow<List<Article>> = _articles.map { l ->
         val top = l.take(5).toSet()
-        l.filter { it !in top }
+        l.filter { it !in top && !it.url.contains("/video/") }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    /** Highlight & video trên trang chủ (lọc từ cùng 1 lần tải, không gọi thêm). */
+    val videos: StateFlow<List<Article>> = _articles.map { l ->
+        l.filter { it.url.contains("/video/") }.take(8)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun load(isRefresh: Boolean = false) {
@@ -37,7 +43,9 @@ class HomeViewModel : ViewModel() {
             if (isRefresh) _refreshing.value = true else _loading.value = true
             _error.value = null
             try {
-                _articles.value = BongDaPlusScraper.fetchHome(cookiesOf(cookieProvider))
+                val sec = BongDaPlusScraper.fetchHomeSections(cookiesOf(cookieProvider))
+                _articles.value = sec.articles
+                _mostRead.value = sec.mostRead
             } catch (e: Exception) {
                 _error.value = "Không tải được tin: ${e.message?.take(100)}"
             }

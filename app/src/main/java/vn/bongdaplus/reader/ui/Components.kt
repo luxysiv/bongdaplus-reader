@@ -161,6 +161,83 @@ fun FeaturedPager(items: List<Article>, onOpen: (Article) -> Unit) {
     }
 }
 
+// ---------- Card video ngang (rail Highlight & Video trang chủ) ----------
+
+@Composable
+fun VideoRailCard(a: Article, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.width(220.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column {
+            Box {
+                if (!a.imageUrl.isNullOrBlank()) {
+                    AsyncImage(a.imageUrl, null,
+                        modifier = Modifier.fillMaxWidth().height(124.dp),
+                        contentScale = ContentScale.Crop)
+                } else {
+                    Box(Modifier.fillMaxWidth().height(124.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer))
+                }
+                Box(
+                    Modifier.fillMaxWidth().height(124.dp)
+                        .background(Color.Black.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier.size(44.dp).clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f)),
+                        contentAlignment = Alignment.Center
+                    ) { Text("▶", color = Color.White, fontSize = MaterialTheme.typography.titleLarge.fontSize) }
+                }
+                if (!a.time.isNullOrBlank()) {
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.75f),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)
+                    ) {
+                        Text(a.time, color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                }
+            }
+            Column(Modifier.padding(10.dp)) {
+                Text("VIDEO", color = hotRed,
+                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(2.dp))
+                Text(a.title, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+// ---------- Hàng Đọc nhiều (số thứ hạng lớn, tách biệt tiêu đề) ----------
+
+@Composable
+fun MostReadRow(rank: Int, a: Article, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("$rank",
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Black,
+            color = if (rank <= 3) hotRed else MaterialTheme.colorScheme.outline,
+            modifier = Modifier.width(40.dp))
+        Column(Modifier.weight(1f)) {
+            Text(a.title, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(3.dp))
+            MetaLine(a)
+        }
+    }
+}
+
 // ---------- Card tin dòng ----------
 
 @Composable
