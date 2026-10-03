@@ -171,15 +171,23 @@ class DetailViewModel : ViewModel() {
     }
 
     /**
-     * Thích/Không thích kiểu web: bấm lại nút đang active = hoàn tác.
-     * Cập nhật UI ngay cho mượt, xong tải lại số thật từ server để chốt.
+     * Thích/Không thích CÚP web (bongdaplus.js): web KHÔNG đọc lại state từ
+     * server sau mỗi bấm (API count/state bị cache -> đọc lại luôn sai ở lần 2,
+     * làm lệch nút hoàn tác). Web toggle TRẠNG THÁI CỤC BỘ (cookie thumup{id})
+     * rồi POST 1 lần, tin HTTP 200. App làm y hệt:
+     *  - _myVotes là source of truth cho nút (bấm 1=like, 2=undo, 3=like...)
+     *  - số đếm cập nhật lạc quan ngay (đúng như DOM web), KHÔNG reload
+     *  - POST 200 là xong; lỗi mạng/bounced thì revert lại snapshot.
      */
     fun reactComment(commentId: String, like: Boolean) {
         val d = _detail.value ?: return
         val cur = _myVotes.value.toMutableMap()
-        val active = cur[commentId]
+        val active = cur[commentId] ?: 0
         val undo = (like && active == 1) || (!like && active == 7)
-        // 1) UI ngay: gỡ vote cũ, áp vote mới (trừ khi hoàn tác)
+        // Snapshot để revert khi POST lỗi
+        val snapComments = _comments.value
+        val snapVotes = _myVotes.value
+        // 1) UI lạc quan: gỡ vote cũ, áp vote mới (trừ khi hoàn tác)
         _comments.value = _comments.value.map {
             if (it.id != commentId) it
             else {
@@ -196,15 +204,18 @@ class DetailViewModel : ViewModel() {
             else -> 7
         }
         _myVotes.value = cur
-        // 2) Server chốt: tải lại số thật (sai thì UI tự sửa theo server)
+        // 2) POST 1 lần (web tin 200). Không reload — reload dính cache là lệch.
         viewModelScope.launch {
             val ok = try {
                 BongDaPlusScraper.setCommentEmotion(
                     d.objectId, commentId, like, cookiesOf(cookieProvider),
                     d.article.url, d.objectType)
             } catch (_: Exception) { false }
-            loadComments()
-            if (!ok) _sendMsg.value = "👍/👎 thất bại — server chưa nhận, thử lại sau."
+            if (!ok) {
+                _comments.value = snapComments
+                _myVotes.value = snapVotes
+                _sendMsg.value = "👍/👎 thất bại — chưa gửi được tới server, thử lại."
+            }
         }
     }
 
@@ -212,23 +223,42 @@ class DetailViewModel : ViewModel() {
     fun reactArticle(emotionType: Int) {
         val d = _detail.value ?: return
         val undo = _myEmotion.value == emotionType
+        val prevEmotion = d.emotion
+        val prevMyEmo = _myEmotion.value
+        // 1) UI lạc quan: đổi nút đang chọn + cộng/trừ số đếm đúng loại
         _myEmotion.value = if (undo) 0 else emotionType
+        fun delta(cur: Emotion, type: Int, up: Boolean): Emotion {
+            val v = when (type) {
+                1 -> cur.liked
+                2 -> cur.heart
+                4 -> cur.wow
+                else -> 0
+            }
+            val nv = (v + (if (up) 1 else -1)).coerceAtLeast(0)
+            return when (type) {
+                1 -> cur.copy(liked = nv)
+                2 -> cur.copy(heart = nv)
+                4 -> cur.copy(wow = nv)
+                else -> cur
+            }
+        }
+        // Nếu đang chọn cảm xúc khác, trước tiên gỡ cái cũ (giảm -1 bên cũ)
+        var e = d.emotion
+        if (!undo && prevMyEmo != 0 && prevMyEmo != emotionType) e = delta(e, prevMyEmo, up = false)
+        e = delta(e, emotionType, up = !undo)
+        _detail.value = d.copy(emotion = e)
+        // 2) POST 1 lần (web tin 200). Không reload.
         viewModelScope.launch {
-            try {
-                val ok = BongDaPlusScraper.setNewsEmotion(
+            val ok = try {
+                BongDaPlusScraper.setNewsEmotion(
                     d.objectId, d.objectType, emotionType,
                     cookiesOf(cookieProvider), d.article.url)
-                if (ok) {
-                    val e = try {
-                        BongDaPlusScraper.fetchEmotion(
-                            d.objectId, d.objectType, cookiesOf(cookieProvider))
-                    } catch (_: Exception) { d.emotion }
-                    _detail.value = _detail.value?.copy(emotion = e) ?: d.copy(emotion = e)
-                } else {
-                    _sendMsg.value = "Cảm xúc thất bại — server chưa nhận, thử lại sau."
-                }
-                loadComments() // đồng bộ lại trạng thái member
-            } catch (_: Exception) { }
+            } catch (_: Exception) { false }
+            if (!ok) {
+                _detail.value = d.copy(emotion = prevEmotion)
+                _myEmotion.value = prevMyEmo
+                _sendMsg.value = "Cảm xúc thất bại — chưa gửi được tới server, thử lại."
+            }
         }
     }
 
