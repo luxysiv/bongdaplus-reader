@@ -531,53 +531,67 @@ object BongDaPlusScraper {
                               cookies: Map<String, String> = emptyMap()): List<Comment> =
         withContext(Dispatchers.IO) {
             if (objectId.isBlank()) return@withContext emptyList()
-            fun parseOne(wrap: org.jsoup.nodes.Element, parentId: String?,
+            /**
+             * Cấu trúc thật của web (đã soi HTML):
+             * li.comment
+             * ├─ div.comm-wrap (div.info[a.member + giờ], [span#replyname_X], p.summ)
+             * ├─ div.actions (a#btnlikecmt_{cid}, span#thumup...) — ANH EM với wrap!
+             * ├─ div#reply_{cid}.comm-post.hide (form trả lời, rỗng)
+             * └─ ul#subcomment_{cid} > li.comment (trả lời, lồng tương tự)
+             * => Mọi thứ phải lấy từ div CON TRỰC TIẾP, không select bừa cả cây
+             * (kẻo ăn nhầm nút like/tên của comment con).
+             */
+            fun parseOne(li: org.jsoup.nodes.Element, parentId: String?,
                          threadId: String): Comment? {
-                val likeA = wrap.selectFirst("a[id^=btnlikecmt_]")
-                val cid = likeA?.attr("id")?.substringAfter("btnlikecmt_") ?: return null
+                val actions = li.children().firstOrNull {
+                    it.tagName() == "div" && it.hasClass("actions")
+                } ?: return null
+                val likeA = actions.selectFirst("a[id^=btnlikecmt_]") ?: return null
+                val cid = likeA.attr("id").substringAfter("btnlikecmt_")
+                if (cid.isBlank()) return null
+                val wrap = li.children().firstOrNull { it.hasClass("comm-wrap") } ?: li
                 val name = wrap.selectFirst("a.member")?.text()?.trim()
                     .ifNullOrBlank { "Bạn đọc" }.nfc()
                 val info = (wrap.selectFirst("div.info")?.text() ?: "").nfc()
-                // time nằm sau tên trong div.info; info của reply có thể lẫn
-                // "@name :" (span.replyat) -> cắt bỏ để giờ sạch
+                // time nằm sau tên trong div.info; cắt tiền tố "@name :" nếu lẫn
                 var time = info.substringAfter(name).trim()
                 time = time.replace(Regex("^@[^:]{1,40}:\\s*"), "").trim().ifBlank { "" }
-                val text = wrap.selectFirst("p.summ")?.text()?.trim()?.nfc() ?: return null
+                var text = wrap.selectFirst("p.summ")?.text()?.trim()?.nfc() ?: return null
+                // span.replyat "@name :" nằm ngay đầu text -> cắt (đã hiện riêng dòng Trả lời)
+                text = text.replace(Regex("^@[^:]{1,40}:\\s*"), "").trim()
                 if (text.isBlank()) return null
                 // Người được trả lời: span#replyname_{cid} ("Trả lời @X")
                 val replyTo = wrap.selectFirst("span[id^=replyname_]")
                     ?.text()?.trim()?.nfc()?.ifBlank { null }
                 return Comment(cid, name, time, text,
-                    wrap.selectFirst("span[id^=thumup]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
-                    wrap.selectFirst("span[id^=thumdw]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
+                    actions.selectFirst("span[id^=thumup]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
+                    actions.selectFirst("span[id^=thumdw]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
                     parentId = parentId,
                     threadId = threadId.ifBlank { cid },
                     replyToName = replyTo)
+            }
+            // Đệ quy cây trả lời, giữ phẳng cha-trước-con-sau (Worker so id, UI gom thread)
+            fun childLis(li: org.jsoup.nodes.Element): List<org.jsoup.nodes.Element> {
+                val out = mutableListOf<org.jsoup.nodes.Element>()
+                for (c in li.children()) {
+                    if (c.tagName() == "ul") {
+                        for (g in c.children()) {
+                            if (g.tagName() == "li" && g.hasClass("comment")) out.add(g)
+                        }
+                    }
+                }
+                return out
             }
             // Đệ quy cây trả lời: li gốc (ul.lst > li) + các li con trong
             // div#reply_{idCha} (có thể lồng nhiều tầng). Giữ phẳng theo thứ tự
             // cha-trước-con-sau để Worker so id và UI gom thread.
             fun parseLi(li: org.jsoup.nodes.Element, parentId: String?, threadId: String): List<Comment> {
                 val out = mutableListOf<Comment>()
-                val wrap = li.children().firstOrNull { it.hasClass("comm-wrap") } ?: li
-                val own = parseOne(wrap, parentId, threadId)
-                if (own != null) out += own
+                val own = parseOne(li, parentId, threadId)
+                if (own != null) out.add(own)
                 val root = own?.id ?: threadId
-                // Chỉ li con TRỰC TIẾP (ul con trực tiếp của div reply),
-                // không dùng select() để khỏi ăn trùng tầng sâu hơn (đệ quy lo).
-                // Duyệt vòng for thường (tránh xung đột overload filter của Jsoup).
-                val replyDiv = li.children().firstOrNull {
-                    it.tagName() == "div" && it.id().startsWith("reply_")
-                }
-                if (replyDiv != null) {
-                    for (ul in replyDiv.children()) {
-                        if (ul.tagName() != "ul") continue
-                        for (child in ul.children()) {
-                            if (child.tagName() == "li" && child.hasClass("comment")) {
-                                out += parseLi(child, own?.id ?: parentId, root)
-                            }
-                        }
-                    }
+                for (child in childLis(li)) {
+                    out.addAll(parseLi(child, own?.id ?: parentId, root))
                 }
                 return out
             }
