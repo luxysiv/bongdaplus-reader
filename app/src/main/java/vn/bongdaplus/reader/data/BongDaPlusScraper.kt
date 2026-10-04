@@ -540,20 +540,33 @@ object BongDaPlusScraper {
                 val root = own?.id ?: threadId
                 // Chỉ li con TRỰC TIẾP (ul con trực tiếp của div reply),
                 // không dùng select() để khỏi ăn trùng tầng sâu hơn (đệ quy lo).
-                li.children()
-                    .firstOrNull { it.tagName() == "div" && it.id().startsWith("reply_") }
-                    ?.children()?.filter { it.tagName() == "ul" }
-                    ?.flatMap { ul -> ul.children()
-                        .filter { it.tagName() == "li" && it.hasClass("comment") } }
-                    ?.forEach { child -> out += parseLi(child, own?.id ?: parentId, root) }
+                // Duyệt vòng for thường (tránh xung đột overload filter của Jsoup).
+                val replyDiv = li.children().firstOrNull {
+                    it.tagName() == "div" && it.id().startsWith("reply_")
+                }
+                if (replyDiv != null) {
+                    for (ul in replyDiv.children()) {
+                        if (ul.tagName() != "ul") continue
+                        for (child in ul.children()) {
+                            if (child.tagName() == "li" && child.hasClass("comment")) {
+                                out += parseLi(child, own?.id ?: parentId, root)
+                            }
+                        }
+                    }
+                }
                 return out
             }
             fun parseFrag(html: String): List<Comment> {
                 val frag = Jsoup.parseBodyFragment(html)
+                val tops = mutableListOf<org.jsoup.nodes.Element>()
                 val rootUl = frag.selectFirst("ul.lst")
-                val tops = rootUl?.children()
-                    ?.filter { it.tagName() == "li" && it.hasClass("comment") }
-                    ?: frag.select("li[id^=parentcmt_]")
+                if (rootUl != null) {
+                    for (c in rootUl.children()) {
+                        if (c.tagName() == "li" && c.hasClass("comment")) tops += c
+                    }
+                } else {
+                    for (e in frag.select("li[id^=parentcmt_]")) tops += e
+                }
                 if (tops.isEmpty()) return emptyList()
                 return tops.flatMap { parseLi(it, null, "") }
             }

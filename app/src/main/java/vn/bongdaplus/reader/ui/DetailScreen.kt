@@ -298,7 +298,6 @@ fun DetailScreen(
                 bodyFont = bodyFont,
                 lineSpace = lineSpace,
                 highlightId = highlightCommentId,
-                highlightId = highlightCommentId,
                 onLogin = { showComments = false; onLogin() },
                 onSend = { text, rt ->
                     scope.launch {
