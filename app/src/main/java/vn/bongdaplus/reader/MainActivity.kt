@@ -203,10 +203,8 @@ class MainActivity : ComponentActivity() {
                             val article = cached?.takeIf { it.url == url }
                                 ?: Article(BongDaPlusScraper.idFromUrl(url), "Bài viết", url)
                             DetailScreen(article, auth, prefs,
-                                onBack = { nav.popBackStack() },
                                 onOpen = ::openArticle,
                                 onLogin = { nav.navigate("login") },
-                                onOpenDisplay = { nav.navigate("display") },
                                 autoOpenComments = e.arguments?.getString("comments") == "1")
                         }
                         composable("login") {

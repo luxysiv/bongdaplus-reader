@@ -43,13 +43,10 @@ fun DetailScreen(
     article: Article,
     auth: AuthManager,
     prefs: UiPrefs,
-    onBack: () -> Unit,
     onOpen: (Article) -> Unit,
     onLogin: () -> Unit,
-    onOpenDisplay: () -> Unit = {},
     autoOpenComments: Boolean = false,
-) {
-    val vm: DetailViewModel = viewModel()
+) {    val vm: DetailViewModel = viewModel()
     val detail by vm.detail.collectAsState()
     val related by vm.related.collectAsState()
     val loading by vm.loading.collectAsState()
@@ -60,7 +57,6 @@ fun DetailScreen(
     val readerFont by prefs.readerFont.collectAsState(initial = "serif")
     val lineSpace by prefs.lineSpace.collectAsState(initial = 1f)
     val bodyFont = if (readerFont == "serif") FontFamily.Serif else FontFamily.Default
-    var showReaderSheet by remember { mutableStateOf(false) }
     // Đi từ thông báo bình luận -> mở thẳng khung bình luận
     var showComments by remember(autoOpenComments) { mutableStateOf(autoOpenComments) }
     val myEmotion by vm.myEmotion.collectAsState()
@@ -72,22 +68,13 @@ fun DetailScreen(
         try { trackStore.track(article) } catch (_: Exception) { }
     }
 
-    fun share() {
-        val i = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, article.title)
-            putExtra(Intent.EXTRA_TEXT, "${article.title}\n${article.url}")
-        }
-        ctx.startActivity(Intent.createChooser(i, "Chia sẻ tin"))
-    }
-
     val cmtCount = detail?.emotion?.comments ?: 0
 
     Scaffold(
-        // Hero tràn viền chuẩn native: bỏ TopBar, dùng nút nổi trên ảnh/đầu trang
+        // Bài tràn viền, không top bar, không nút nổi che nội dung
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            // Thanh công cụ dưới kiểu app báo: cảm xúc + bình luận + lưu
+            // Thanh công cụ dưới: cảm xúc + mở khung bình luận
             if (detail != null) {
                 val d = detail!!
                 Surface(shadowElevation = 8.dp) {
@@ -111,9 +98,6 @@ fun DetailScreen(
                             label = { Text("💬 $cmtCount") },
                             modifier = Modifier.padding(end = 4.dp)
                         )
-                        IconButton(onClick = { share() }) {
-                            Icon(Icons.Default.Share, "Chia sẻ", tint = MaterialTheme.colorScheme.primary)
-                        }
                     }
                 }
             }
@@ -122,24 +106,10 @@ fun DetailScreen(
         Box(Modifier.padding(pad).fillMaxSize()) {
             if (loading && detail == null) {
                 val isVideoGuess = article.category == "video" || article.url.contains("/video/")
-                Column {
-                    Spacer(Modifier.statusBarsPadding())
-                    Spacer(Modifier.height(64.dp))
-                    DetailSkeleton(isVideoGuess)
-                }
+                DetailSkeleton(isVideoGuess)
             } else if (detail != null) {
             val d = detail!!
-            val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-            val progress by remember {
-                derivedStateOf {
-                    val total = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(1)
-                    val idx = listState.firstVisibleItemIndex +
-                        (if (listState.firstVisibleItemScrollOffset > 0) 1 else 0)
-                    (idx.toFloat() / total).coerceIn(0f, 1f)
-                }
-            }
-            Box(Modifier.fillMaxSize()) {
-                LazyColumn(Modifier.fillMaxSize(), state = listState) {
+            LazyColumn(Modifier.fillMaxSize()) {
                     // ===== VIDEO: player-first =====
                     if (d.isVideo) {
                         item {
@@ -314,32 +284,9 @@ fun DetailScreen(
                     }
                     item { Spacer(Modifier.height(24.dp)) }
                 }
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth().statusBarsPadding()
-                        .padding(top = 2.dp).align(Alignment.TopCenter),
-                )
-            }
             } else {
-                Column {
-                    Spacer(Modifier.statusBarsPadding())
-                    Spacer(Modifier.height(64.dp))
-                    ErrorBox("Không tải được bài viết.", onRetry = { vm.load(article) })
-                }
+                ErrorBox("Không tải được bài viết.", onRetry = { vm.load(article) })
             }
-            // Nút nổi trên hero/đầu trang (luôn hiện, cả khi đang tải)
-            DetailOverlayBar(
-                onBack = onBack,
-                onFont = { showReaderSheet = true },
-                onShare = { share() }
-            )
-        }
-        if (showReaderSheet) {
-            ReaderQuickSettingsSheet(
-                prefs = prefs,
-                onOpenFull = { showReaderSheet = false; onOpenDisplay() },
-                onDismiss = { showReaderSheet = false }
-            )
         }
         if (showComments && detail != null) {
             CommentsBottomSheet(
@@ -371,46 +318,6 @@ private fun EmotionPill(icon: String, count: Int, selected: Boolean, onClick: ()
         onClick = onClick,
         label = { Text("$icon $count") },
         modifier = Modifier.padding(end = 4.dp)
-    )
-}
-
-/**
- * Nút nổi trên hero/đầu trang kiểu app báo native (Google News):
- * nền tròn tối mờ nên nổi rõ cả trên ảnh lẫn nền trắng.
- */
-@Composable
-private fun DetailOverlayBar(
-    onBack: () -> Unit,
-    onFont: () -> Unit,
-    onShare: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().statusBarsPadding()
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        OverlayCircle(onClick = onBack) {
-            Icon(Icons.Default.ArrowBack, "Về", tint = Color.White)
-        }
-        Spacer(Modifier.weight(1f))
-        TextButton(
-            onClick = onFont,
-            modifier = Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.42f)),
-            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-        ) { Text("Aa", fontWeight = FontWeight.Bold) }
-        Spacer(Modifier.width(8.dp))
-        OverlayCircle(onClick = onShare) {
-            Icon(Icons.Default.Share, "Chia sẻ", tint = Color.White)
-        }
-    }
-}
-
-@Composable
-private fun OverlayCircle(onClick: () -> Unit, content: @Composable () -> Unit) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.42f)),
-        content = content
     )
 }
 
