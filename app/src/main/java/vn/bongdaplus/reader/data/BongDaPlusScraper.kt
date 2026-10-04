@@ -331,6 +331,31 @@ object BongDaPlusScraper {
         }.take(300)
     }
 
+    /**
+     * Bỏ ảnh body ĐẦU TIÊN nếu trùng ảnh hero (web hay lặp lại ảnh đại diện
+     * ngay đầu bài, vd kane.jpg vs Kane.jpg khác mỗi hoa/thường).
+     * So sánh nới lỏng: thường/thường, bỏ query, bỏ hậu tố cỡ CDN (_m/_c...).
+     */
+    private fun List<ContentBlock>.dedupeHero(hero: String?): List<ContentBlock> {
+        if (hero.isNullOrBlank()) return this
+        val idx = indexOfFirst { it is ContentBlock.Image && sameImage(it.url, hero) }
+        if (idx < 0) return this
+        return filterIndexed { i, _ -> i != idx }
+    }
+
+    private fun sameImage(a: String, b: String): Boolean {
+        fun norm(u: String): String {
+            val base = u.trim().lowercase()
+                .substringBefore("?").substringBefore("#")
+                .substringAfterLast("/")
+            return base.replace(
+                Regex("(_m|_c|_s|_480|_270|_thumb|_small|_medium|_large)(\\.[a-z]{3,4})$"),
+                "$2")
+        }
+        if (a.isBlank() || b.isBlank()) return false
+        return norm(a) == norm(b)
+    }
+
     suspend fun fetchDetail(url: String, cookies: Map<String, String> = emptyMap()): ArticleDetail =
         withContext(Dispatchers.IO) {
             val doc = loadDoc(url, cookies)
@@ -373,7 +398,7 @@ object BongDaPlusScraper {
                     }
                 }.take(50)
                 bodyEl.tagName() == "body" -> emptyList()
-                else -> parseBlocks(bodyEl)
+                else -> parseBlocks(bodyEl).dedupeHero(ogImg)
             }
             if (ytId != null && (ogImg.isNullOrBlank() || ogImg.contains("logo"))) {
                 ogImg = "https://i.ytimg.com/vi/$ytId/hqdefault.jpg"

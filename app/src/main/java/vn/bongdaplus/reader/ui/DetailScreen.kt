@@ -43,6 +43,7 @@ fun DetailScreen(
     article: Article,
     auth: AuthManager,
     prefs: UiPrefs,
+    onBack: () -> Unit,
     onOpen: (Article) -> Unit,
     onLogin: () -> Unit,
     autoOpenComments: Boolean = false,
@@ -72,8 +73,24 @@ fun DetailScreen(
     val cmtCount = detail?.emotion?.comments ?: 0
 
     Scaffold(
-        // Bài tràn viền, không top bar, không nút nổi che nội dung
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        // Thanh đầu chuẩn app (Back + tên mục), nằm trong luồng layout,
+        // không phủ lên nội dung như nút nổi trước đây
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        catName(detail?.article?.category ?: article.category),
+                        fontWeight = FontWeight.SemiBold, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Về")
+                    }
+                }
+            )
+        },
         bottomBar = {
             // Thanh công cụ dưới: cảm xúc + mở khung bình luận
             if (detail != null) {
@@ -186,21 +203,17 @@ fun DetailScreen(
                                 BylineRow(d)
                             }
                         }
-                        // Hero ảnh full kiểu báo
+                        // Hero ảnh (không caption giả — caption thật của ảnh
+                        // trùng hero đã bị lọc ở scraper)
                         if (!d.article.imageUrl.isNullOrBlank()) {
                             item {
-                                Column(Modifier.padding(12.dp, 10.dp)) {
-                                    AsyncImage(
-                                        d.article.imageUrl, null,
-                                        modifier = Modifier.fillMaxWidth()
-                                            .clip(RoundedCornerShape(16.dp)),
-                                        contentScale = ContentScale.FillWidth
-                                    )
-                                    Text("Ảnh: BongdaPlus",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.padding(top = 6.dp).align(Alignment.CenterHorizontally))
-                                }
+                                AsyncImage(
+                                    d.article.imageUrl, null,
+                                    modifier = Modifier.padding(12.dp, 10.dp, 12.dp, 4.dp)
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp)),
+                                    contentScale = ContentScale.FillWidth
+                                )
                             }
                         }
                         // Body
