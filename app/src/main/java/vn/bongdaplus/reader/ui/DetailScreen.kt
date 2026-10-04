@@ -46,6 +46,7 @@ fun DetailScreen(
     onOpen: (Article) -> Unit,
     onLogin: () -> Unit,
     autoOpenComments: Boolean = false,
+    highlightCommentId: String? = null,
 ) {    val vm: DetailViewModel = viewModel()
     val detail by vm.detail.collectAsState()
     val related by vm.related.collectAsState()
@@ -296,12 +297,16 @@ fun DetailScreen(
                 fontScale = fontScale,
                 bodyFont = bodyFont,
                 lineSpace = lineSpace,
+                highlightId = highlightCommentId,
+                highlightId = highlightCommentId,
                 onLogin = { showComments = false; onLogin() },
                 onSend = { text, rt ->
                     scope.launch {
+                        // Trả lời luôn gắn vào thread gốc (parentId=root),
+                        // replyId/name trỏ đúng người được trả lời (chuẩn web)
                         vm.sendComment(text, article, trackStore,
-                            parentId = rt?.id ?: "0",
-                            replyId = "0",
+                            parentId = rt?.rootId ?: "0",
+                            replyId = if (rt?.isReply == true) rt.id else "0",
                             replyName = rt?.name ?: "")
                     }
                 },
@@ -334,6 +339,7 @@ private fun CommentsBottomSheet(
     fontScale: Float,
     bodyFont: FontFamily,
     lineSpace: Float,
+    highlightId: String? = null,
     onLogin: () -> Unit,
     onSend: (String, Comment?) -> Unit,
     onDismiss: () -> Unit,
@@ -346,7 +352,39 @@ private fun CommentsBottomSheet(
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<Comment?>(null) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Gom phẳng theo thread (cha trước, con sau) để render + cuộn tới comment
+    val flat = remember(comments) {
+        val byThread = LinkedHashMap<String, MutableList<Comment>>()
+        val order = mutableListOf<String>()
+        for (c in comments) {
+            val t = c.rootId
+            if (!byThread.containsKey(t)) {
+                byThread[t] = mutableListOf()
+                order += t
+            }
+            byThread[t]!! += c
+        }
+        order.flatMap { byThread[it]!! }
+    }
+    fun isTarget(c: Comment): Boolean {
+        val h = highlightId?.trim().orEmpty()
+        if (h.isBlank()) return false
+        return c.id == h || h.contains(c.id) || c.id.contains(h)
+    }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // Mở từ link #txtcomment_xxx -> cuộn thẳng tới bình luận đó
+    LaunchedEffect(comments) {
+        val idx = flat.indexOfFirst(::isTarget)
+        if (idx >= 0) {
+            try { listState.scrollToItem((idx - 1).coerceAtLeast(0)) } catch (_: Exception) { }
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        // Để IME insets tới được nội dung (không bị sheet nuốt), ô nhập tự đẩy lên
+        windowInsets = WindowInsets(0, 0, 0, 0)
+    ) {
         Column(Modifier.fillMaxHeight(0.92f)) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -360,16 +398,17 @@ private fun CommentsBottomSheet(
                 }
             }
             HorizontalDivider()
-            LazyColumn(Modifier.weight(1f)) {
+            LazyColumn(Modifier.weight(1f), state = listState) {
                 if (loadingComments && comments.isEmpty()) {
                     item { LoadingSkeleton(2) }
                 } else if (comments.isEmpty()) {
                     item { EmptyState("Chưa có bình luận. Hãy là người đầu tiên!") }
                 } else {
-                    items(comments, key = { it.id }) { c ->
+                    items(flat, key = { it.id }) { c ->
                         ModernCommentCard(c, fontScale,
                             voted = myVotes[c.id] ?: 0,
                             canVote = logged,
+                            highlighted = isTarget(c),
                             bodyFont = bodyFont, lineSpace = lineSpace,
                             onLike = { vm.reactComment(c.id, true) },
                             onDislike = { vm.reactComment(c.id, false) },
@@ -384,7 +423,9 @@ private fun CommentsBottomSheet(
                     replyTo?.let { r ->
                         Row(verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(bottom = 6.dp)) {
-                            Text("↩️ Trả lời @${r.name.trim()}",
+                            Text(
+                                if (r.isReply) "↩️ Trả lời @${r.name.trim()} (trong chuỗi của @${r.replyToName ?: "…"})"
+                                else "↩️ Trả lời @${r.name.trim()}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.weight(1f))
@@ -571,50 +612,83 @@ private fun RelatedCard(a: Article, onClick: () -> Unit) {
 private fun ModernCommentCard(
     c: Comment, fontScale: Float,
     voted: Int = 0, canVote: Boolean = false,
+    highlighted: Boolean = false,
     bodyFont: FontFamily = FontFamily.Serif, lineSpace: Float = 1f,
     onLike: () -> Unit = {}, onDislike: () -> Unit = {},
     onReply: () -> Unit = {},
 ) {
-    Card(
-        modifier = Modifier.padding(12.dp, 6.dp).fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+    // Trả lời thụt vào + vạch màu để phân biệt rõ với bình luận gốc
+    Row(
+        Modifier.fillMaxWidth()
+            .padding(start = if (c.isReply) 30.dp else 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.Top
     ) {
-        Row(Modifier.padding(12.dp)) {
-            Box(modifier = Modifier.size(40.dp).clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center) {
-                Text(c.name.firstOrNull()?.uppercase() ?: "B",
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer)
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(c.name.trim(), fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f, fill = false),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (c.time.isNotBlank()) {
-                        Text(" • ${c.time}", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline, maxLines = 1)
-                    }
+        if (c.isReply) {
+            Box(
+                Modifier.padding(top = 10.dp).width(3.dp).height(56.dp)
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        Card(
+            modifier = Modifier.weight(1f),
+            border = if (highlighted)
+                androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            else null,
+            colors = CardDefaults.cardColors(
+                containerColor = if (c.isReply) MaterialTheme.colorScheme.surface
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+        ) {
+            Row(Modifier.padding(12.dp)) {
+                Box(
+                    modifier = Modifier.size(if (c.isReply) 34.dp else 40.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(c.name.firstOrNull()?.uppercase() ?: "B",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(c.text, fontFamily = bodyFont, fontSize = (15 * fontScale).sp,
-                    lineHeight = (23 * fontScale * lineSpace).sp)
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(
-                        selected = voted == 1, onClick = onLike, enabled = canVote,
-                        label = { Text("👍 ${c.likes}") })
-                    Spacer(Modifier.width(8.dp))
-                    FilterChip(
-                        selected = voted == 7, onClick = onDislike, enabled = canVote,
-                        label = { Text("👎 ${c.dislikes}") })
-                    if (canVote) {
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (c.isReply) {
+                            Text("↩ ", style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold)
+                        }
+                        Text(c.name.trim(), fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f, fill = false),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (c.time.isNotBlank()) {
+                            Text(" • ${c.time}", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline, maxLines = 1)
+                        }
+                    }
+                    // Dòng "trả lời @ai" lấy từ web (span replyname_)
+                    if (c.isReply && !c.replyToName.isNullOrBlank()) {
+                        Text("Trả lời @${c.replyToName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(c.text, fontFamily = bodyFont, fontSize = (15 * fontScale).sp,
+                        lineHeight = (23 * fontScale * lineSpace).sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip(
+                            selected = voted == 1, onClick = onLike, enabled = canVote,
+                            label = { Text("👍 ${c.likes}") })
                         Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = onReply) { Text("Trả lời") }
+                        FilterChip(
+                            selected = voted == 7, onClick = onDislike, enabled = canVote,
+                            label = { Text("👎 ${c.dislikes}") })
+                        if (canVote) {
+                            Spacer(Modifier.width(8.dp))
+                            TextButton(onClick = onReply) { Text("Trả lời") }
+                        }
                     }
                 }
             }

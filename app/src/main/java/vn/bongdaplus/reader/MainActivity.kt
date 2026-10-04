@@ -29,20 +29,32 @@ import java.net.URLEncoder
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
 /** Deep link mở bài viết từ thông báo (kèm cờ mở thẳng khung bình luận). */
-private data class DeepLink(val url: String, val comments: Boolean)
+private data class DeepLink(val url: String, val comments: Boolean, val commentId: String? = null)
+
+/** Tách id bình luận từ neo #txtcomment_xxx (vd #txtcomment_22995732299573). */
+private fun commentIdFromUrl(url: String): String? {
+    return try {
+        val frag = url.substringAfter("#", "")
+        if (frag.isBlank()) null
+        else frag.substringAfter("txtcomment_", frag)
+            .filter { it.isDigit() }.takeIf { it.isNotBlank() }
+    } catch (_: Exception) { null }
+}
 
 private fun parseDeepLink(intent: android.content.Intent?): DeepLink? {
     if (intent == null) return null
     // 1) Extra từ PendingIntent của app
     intent.getStringExtra("open_url")?.takeIf { it.isNotBlank() }?.let { url ->
-        return DeepLink(url, intent.getBooleanExtra("open_comments", false))
+        return DeepLink(url, intent.getBooleanExtra("open_comments", false),
+            commentIdFromUrl(url))
     }
     // 2) Deep link scheme bongdaplus://article?url=...(&comments=1)
     try {
         val d = intent.data
         if (d != null && d.scheme == "bongdaplus") {
             d.getQueryParameter("url")?.takeIf { it.isNotBlank() }?.let { url ->
-                return DeepLink(url, d.getQueryParameter("comments") == "1")
+                return DeepLink(url, d.getQueryParameter("comments") == "1",
+                    commentIdFromUrl(url))
             }
         }
     } catch (_: Exception) { }
@@ -117,10 +129,14 @@ class MainActivity : ComponentActivity() {
                     deep?.let { d ->
                         val a = Article(BongDaPlusScraper.idFromUrl(d.url), "Tin mới", d.url)
                         ArticleCache.put(a)
-                        nav.navigate(
-                            "detail/${a.id}?url=${URLEncoder.encode(d.url, "UTF-8")}" +
-                                if (d.comments) "&comments=1" else ""
-                        )
+                        // Neo #txtcomment_xxx -> mở thẳng khung bình luận + cuộn tới đó
+                        val openCmt = d.comments || d.commentId != null
+                        var route = "detail/${a.id}?url=${URLEncoder.encode(d.url, "UTF-8")}"
+                        if (openCmt) route += "&comments=1"
+                        if (d.commentId != null) {
+                            route += "&hl=${URLEncoder.encode(d.commentId, "UTF-8")}"
+                        }
+                        nav.navigate(route)
                         _deepLink.value = null
                     }
                 }
@@ -190,11 +206,12 @@ class MainActivity : ComponentActivity() {
                                 onBack = { nav.popBackStack() })
                         }
                         composable(
-                            "detail/{id}?url={url}&comments={comments}",
+                            "detail/{id}?url={url}&comments={comments}&hl={hl}",
                             arguments = listOf(
                                 navArgument("id") { type = NavType.StringType },
                                 navArgument("url") { type = NavType.StringType },
-                                navArgument("comments") { type = NavType.StringType; defaultValue = "0" }
+                                navArgument("comments") { type = NavType.StringType; defaultValue = "0" },
+                                navArgument("hl") { type = NavType.StringType; defaultValue = "" }
                             )
                         ) { e ->
                             val id = e.arguments?.getString("id") ?: ""
@@ -205,7 +222,9 @@ class MainActivity : ComponentActivity() {
                             DetailScreen(article, auth, prefs,
                                 onOpen = ::openArticle,
                                 onLogin = { nav.navigate("login") },
-                                autoOpenComments = e.arguments?.getString("comments") == "1")
+                                autoOpenComments = e.arguments?.getString("comments") == "1",
+                                highlightCommentId = e.arguments?.getString("hl")
+                                    ?.takeIf { it.isNotBlank() })
                         }
                         composable("login") {
                             NativeLoginScreen(auth,

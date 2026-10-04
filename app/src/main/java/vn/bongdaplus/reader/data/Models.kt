@@ -47,7 +47,7 @@ data class Emotion(
     val comments: Int = 0,
 )
 
-/** Bình luận thật từ /binh-luan */
+/** Bình luận thật từ /binh-luan (giữ phẳng để Worker so id, UI tự gom theo thread). */
 data class Comment(
     val id: String,
     val name: String,
@@ -55,7 +55,16 @@ data class Comment(
     val text: String,
     val likes: Int = 0,
     val dislikes: Int = 0,
-)
+    /** id bình luận cha trực tiếp (null = bình luận gốc). */
+    val parentId: String? = null,
+    /** id thread gốc (chính mình nếu là gốc) — UI gom nhóm theo đây. */
+    val threadId: String = "",
+    /** Tên người được trả lời (span replyname_ của web, "@name :"). */
+    val replyToName: String? = null,
+) {
+    val isReply: Boolean get() = parentId != null
+    val rootId: String get() = threadId.ifBlank { id }
+}
 
 /**
  * Thông báo member thật từ div#lstnoti (khi đã đăng nhập).

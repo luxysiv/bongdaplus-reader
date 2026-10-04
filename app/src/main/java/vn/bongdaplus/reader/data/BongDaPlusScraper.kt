@@ -506,20 +506,56 @@ object BongDaPlusScraper {
                               cookies: Map<String, String> = emptyMap()): List<Comment> =
         withContext(Dispatchers.IO) {
             if (objectId.isBlank()) return@withContext emptyList()
+            fun parseOne(wrap: org.jsoup.nodes.Element, parentId: String?,
+                         threadId: String): Comment? {
+                val likeA = wrap.selectFirst("a[id^=btnlikecmt_]")
+                val cid = likeA?.attr("id")?.substringAfter("btnlikecmt_") ?: return null
+                val name = wrap.selectFirst("a.member")?.text()?.trim()
+                    .ifNullOrBlank { "Bạn đọc" }.nfc()
+                val info = (wrap.selectFirst("div.info")?.text() ?: "").nfc()
+                // time nằm sau tên trong div.info; info của reply có thể lẫn
+                // "@name :" (span.replyat) -> cắt bỏ để giờ sạch
+                var time = info.substringAfter(name).trim()
+                time = time.replace(Regex("^@[^:]{1,40}:\\s*"), "").trim().ifBlank { "" }
+                val text = wrap.selectFirst("p.summ")?.text()?.trim()?.nfc() ?: return null
+                if (text.isBlank()) return null
+                // Người được trả lời: span#replyname_{cid} ("Trả lời @X")
+                val replyTo = wrap.selectFirst("span[id^=replyname_]")
+                    ?.text()?.trim()?.nfc()?.ifBlank { null }
+                return Comment(cid, name, time, text,
+                    wrap.selectFirst("span[id^=thumup]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
+                    wrap.selectFirst("span[id^=thumdw]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
+                    parentId = parentId,
+                    threadId = threadId.ifBlank { cid },
+                    replyToName = replyTo)
+            }
+            // Đệ quy cây trả lời: li gốc (ul.lst > li) + các li con trong
+            // div#reply_{idCha} (có thể lồng nhiều tầng). Giữ phẳng theo thứ tự
+            // cha-trước-con-sau để Worker so id và UI gom thread.
+            fun parseLi(li: org.jsoup.nodes.Element, parentId: String?, threadId: String): List<Comment> {
+                val out = mutableListOf<Comment>()
+                val wrap = li.children().firstOrNull { it.hasClass("comm-wrap") } ?: li
+                val own = parseOne(wrap, parentId, threadId)
+                if (own != null) out += own
+                val root = own?.id ?: threadId
+                // Chỉ li con TRỰC TIẾP (ul con trực tiếp của div reply),
+                // không dùng select() để khỏi ăn trùng tầng sâu hơn (đệ quy lo).
+                li.children()
+                    .firstOrNull { it.tagName() == "div" && it.id().startsWith("reply_") }
+                    ?.children()?.filter { it.tagName() == "ul" }
+                    ?.flatMap { ul -> ul.children()
+                        .filter { it.tagName() == "li" && it.hasClass("comment") } }
+                    ?.forEach { child -> out += parseLi(child, own?.id ?: parentId, root) }
+                return out
+            }
             fun parseFrag(html: String): List<Comment> {
                 val frag = Jsoup.parseBodyFragment(html)
-                return frag.select("li.comment").mapNotNull { li ->
-                    val likeA = li.selectFirst("a[id^=btnlikecmt_]")
-                    val cid = likeA?.attr("id")?.substringAfter("btnlikecmt_") ?: return@mapNotNull null
-                    val name = li.selectFirst("a.member")?.text()?.trim().ifNullOrBlank { "Bạn đọc" }.nfc()
-                    val info = (li.selectFirst("div.info")?.text() ?: "").nfc()
-                    val time = info.substringAfter(name).trim().ifBlank { "" }
-                    val text = li.selectFirst("p.summ")?.text()?.trim()?.nfc() ?: return@mapNotNull null
-                    if (text.isBlank()) return@mapNotNull null
-                    Comment(cid, name, time, text,
-                        li.selectFirst("span[id^=thumup]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
-                        li.selectFirst("span[id^=thumdw]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0)
-                }
+                val rootUl = frag.selectFirst("ul.lst")
+                val tops = rootUl?.children()
+                    ?.filter { it.tagName() == "li" && it.hasClass("comment") }
+                    ?: frag.select("li[id^=parentcmt_]")
+                if (tops.isEmpty()) return emptyList()
+                return tops.flatMap { parseLi(it, null, "") }
             }
             // Dùng ĐÚNG objectType của bài, không dò chéo (lý do như trên).
             try {
