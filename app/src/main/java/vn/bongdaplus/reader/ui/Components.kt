@@ -10,6 +10,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,7 +43,7 @@ fun MetaLine(a: Article, light: Boolean = false) {
             Text("  •  ${a.time}", color = if (light) Color.White.copy(alpha = 0.8f) else Color.Gray,
                 style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
-        // Số bình luận web đính kèm: hiện dạng pill riêng (khác hẳn font tiêu đề
+        // Số bình luận web đính kèm: pill riêng icon + số (khác hẳn font tiêu đề
         // để khỏi nhầm với chữ trong tít như trước).
         if (a.comments > 0) {
             Spacer(Modifier.width(6.dp))
@@ -51,12 +52,21 @@ fun MetaLine(a: Article, light: Boolean = false) {
                 else MaterialTheme.colorScheme.tertiaryContainer,
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("💬 ${a.comments}",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = if (light) Color(0xFFC62828)
-                    else MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Icon(Icons.Default.ChatBubble, "Bình luận",
+                        tint = if (light) Color(0xFFC62828)
+                        else MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.size(12.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("${a.comments}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (light) Color(0xFFC62828)
+                        else MaterialTheme.colorScheme.onTertiaryContainer)
+                }
             }
         }
     }

@@ -517,7 +517,10 @@ fun MemberNotifsScreen(
                             leadingContent = {
                                 Box(modifier = Modifier.size(40.dp).clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.secondaryContainer),
-                                    contentAlignment = Alignment.Center) { Text("💬") }
+                                    contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.ChatBubble, "Bình luận",
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
                             },
                             modifier = Modifier.clickable { onOpen(m.article) }
                         )
@@ -540,7 +543,12 @@ fun MemberNotifsScreen(
                                     .background(if (n.action == "không thích") MaterialTheme.colorScheme.errorContainer
                                     else MaterialTheme.colorScheme.primaryContainer),
                                     contentAlignment = Alignment.Center) {
-                                    Text(if (n.action == "không thích") "👎" else if (n.action == "trả lời") "↩️" else "👍")
+                                    val (icon, desc) = when (n.action) {
+                                        "không thích" -> Icons.Default.ThumbDown to "Không thích"
+                                        "trả lời" -> Icons.Default.Reply to "Trả lời"
+                                        else -> Icons.Default.ThumbUp to "Thích"
+                                    }
+                                    Icon(icon, desc)
                                 }
                             },
                             modifier = Modifier.clickable {

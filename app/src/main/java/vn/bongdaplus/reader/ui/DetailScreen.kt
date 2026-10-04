@@ -103,19 +103,20 @@ fun DetailScreen(
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        EmotionPill("👍", d.emotion.liked, selected = myEmotion == 1) {
+                        EmotionPill(Icons.Default.ThumbUp, "Thích", d.emotion.liked, selected = myEmotion == 1) {
                             if (logged) vm.reactArticle(1) else onLogin()
                         }
-                        EmotionPill("❤️", d.emotion.heart, selected = myEmotion == 2) {
+                        EmotionPill(Icons.Default.Favorite, "Yêu thích", d.emotion.heart, selected = myEmotion == 2) {
                             if (logged) vm.reactArticle(2) else onLogin()
                         }
-                        EmotionPill("😮", d.emotion.wow, selected = myEmotion == 4) {
+                        EmotionPill(Icons.Default.Star, "Wow", d.emotion.wow, selected = myEmotion == 4) {
                             if (logged) vm.reactArticle(4) else onLogin()
                         }
                         Spacer(Modifier.weight(1f))
                         AssistChip(
                             onClick = { showComments = true },
-                            label = { Text("💬 $cmtCount") },
+                            leadingIcon = { Icon(Icons.Default.ChatBubble, "Bình luận") },
+                            label = { Text("$cmtCount") },
                             modifier = Modifier.padding(end = 4.dp)
                         )
                     }
@@ -331,11 +332,15 @@ fun DetailScreen(
 }
 
 @Composable
-private fun EmotionPill(icon: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun EmotionPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    desc: String, count: Int, selected: Boolean, onClick: () -> Unit,
+) {
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text("$icon $count") },
+        leadingIcon = { Icon(icon, desc) },
+        label = { Text("$count") },
         modifier = Modifier.padding(end = 4.dp)
     )
 }
@@ -698,13 +703,15 @@ private fun ModernCommentCard(
                         lineHeight = (23 * fontScale * lineSpace).sp)
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        FilterChip(
-                            selected = voted == 1, onClick = onLike, enabled = canVote,
-                            label = { Text("👍 ${c.likes}") })
-                        Spacer(Modifier.width(8.dp))
-                        FilterChip(
-                            selected = voted == 7, onClick = onDislike, enabled = canVote,
-                            label = { Text("👎 ${c.dislikes}") })
+                    FilterChip(
+                        selected = voted == 1, onClick = onLike, enabled = canVote,
+                        leadingIcon = { Icon(Icons.Default.ThumbUp, "Thích") },
+                        label = { Text("${c.likes}") })
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(
+                        selected = voted == 7, onClick = onDislike, enabled = canVote,
+                        leadingIcon = { Icon(Icons.Default.ThumbDown, "Không thích") },
+                        label = { Text("${c.dislikes}") })
                         if (canVote) {
                             Spacer(Modifier.width(8.dp))
                             TextButton(onClick = onReply) { Text("Trả lời") }
