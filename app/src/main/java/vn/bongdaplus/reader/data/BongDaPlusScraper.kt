@@ -560,9 +560,12 @@ object BongDaPlusScraper {
                 // span.replyat "@name :" nằm ngay đầu text -> cắt (đã hiện riêng dòng Trả lời)
                 text = text.replace(Regex("^@[^:]{1,40}:\\s*"), "").trim()
                 if (text.isBlank()) return null
-                // Người được trả lời: span#replyname_{cid} ("Trả lời @X")
-                val replyTo = wrap.selectFirst("span[id^=replyname_]")
-                    ?.text()?.trim()?.nfc()?.ifBlank { null }
+                // Người được trả lời: span.replyat "@X :" ở đầu text.
+                // (span#replyname_{cid} là TÊN TÁC GIẢ của chính comment đó,
+                // web dùng cho form trả lời — tuyệt đối không dùng làm replyTo!)
+                val replyTo = wrap.selectFirst("span.replyat")
+                    ?.text()?.trim()?.removePrefix("@")
+                    ?.substringBefore(":")?.trim()?.nfc()?.ifBlank { null }
                 return Comment(cid, name, time, text,
                     actions.selectFirst("span[id^=thumup]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
                     actions.selectFirst("span[id^=thumdw]")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 0,

@@ -416,11 +416,14 @@ private fun CommentsBottomSheet(
                 } else if (comments.isEmpty()) {
                     item { EmptyState("Chưa có bình luận. Hãy là người đầu tiên!") }
                 } else {
+                    val nameById = remember(comments) { comments.associate { it.id to it.name } }
                     items(flat, key = { it.id }) { c ->
                         ModernCommentCard(c, fontScale,
                             voted = myVotes[c.id] ?: 0,
                             canVote = logged,
                             highlighted = isTarget(c),
+                            // Trả lời không ghi rõ @ai -> lấy tên bình luận cha
+                            parentName = c.parentId?.let { nameById[it] },
                             bodyFont = bodyFont, lineSpace = lineSpace,
                             onLike = { vm.reactComment(c.id, true) },
                             onDislike = { vm.reactComment(c.id, false) },
@@ -625,6 +628,7 @@ private fun ModernCommentCard(
     c: Comment, fontScale: Float,
     voted: Int = 0, canVote: Boolean = false,
     highlighted: Boolean = false,
+    parentName: String? = null,
     bodyFont: FontFamily = FontFamily.Serif, lineSpace: Float = 1f,
     onLike: () -> Unit = {}, onDislike: () -> Unit = {},
     onReply: () -> Unit = {},
@@ -678,9 +682,11 @@ private fun ModernCommentCard(
                                 color = MaterialTheme.colorScheme.outline, maxLines = 1)
                         }
                     }
-                    // Dòng "trả lời @ai" lấy từ web (span replyname_)
-                    if (c.isReply && !c.replyToName.isNullOrBlank()) {
-                        Text("Trả lời @${c.replyToName}",
+                    // Dòng "trả lời @ai": ưu tiên @X web ghi rõ, không thì tên cha
+                    if (c.isReply) {
+                        val target = c.replyToName?.ifBlank { null } ?: parentName?.ifBlank { null }
+                        Text(
+                            if (target != null) "Trả lời @$target" else "Trả lời bình luận",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
