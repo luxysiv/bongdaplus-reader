@@ -587,10 +587,10 @@ object BongDaPlusScraper {
                 val rootUl = frag.selectFirst("ul.lst")
                 if (rootUl != null) {
                     for (c in rootUl.children()) {
-                        if (c.tagName() == "li" && c.hasClass("comment")) tops += c
+                        if (c.tagName() == "li" && c.hasClass("comment")) tops.add(c)
                     }
                 } else {
-                    for (e in frag.select("li[id^=parentcmt_]")) tops += e
+                    for (e in frag.select("li[id^=parentcmt_]")) tops.add(e)
                 }
                 if (tops.isEmpty()) return emptyList()
                 return tops.flatMap { parseLi(it, null, "") }
