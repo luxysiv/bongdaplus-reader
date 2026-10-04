@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -145,7 +145,7 @@ fun NativeVideoPlayer(
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = Color.White)
-                ) { Icon(Icons.Default.PlayArrow, "Phát", modifier = Modifier.size(40.dp)) }
+                ) { Icon(Icons.Rounded.PlayArrow, "Phát", modifier = Modifier.size(40.dp)) }
             }
         }
         if (stream != null && !fullscreen) {
@@ -154,7 +154,7 @@ fun NativeVideoPlayer(
                 modifier = Modifier.align(Alignment.TopEnd)
                     .padding(4.dp).clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.5f))
-            ) { Icon(Icons.Default.Fullscreen, "Toàn màn hình", tint = Color.White) }
+            ) { Icon(Icons.Rounded.Fullscreen, "Toàn màn hình", tint = Color.White) }
         }
         if (!title.isNullOrBlank() && !userStarted) {
             Text(title, color = Color.White, fontSize = 12.sp, maxLines = 2,
@@ -199,7 +199,7 @@ fun VideoExternalCard(embedUrl: String, videoId: String?) {
             Box(Modifier.size(44.dp).clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.PlayArrow, null, tint = Color.White)
+                Icon(Icons.Rounded.PlayArrow, null, tint = Color.White)
             }
             Spacer(Modifier.width(10.dp))
             Text("Mở video bằng trình duyệt / YouTube",

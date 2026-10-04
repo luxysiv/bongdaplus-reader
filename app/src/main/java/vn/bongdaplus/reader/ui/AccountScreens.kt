@@ -16,7 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -224,7 +224,7 @@ fun AccountScreen(
                                 onClick = { scope.launch { auth.logout() } },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                            ) { Icon(Icons.Default.Logout, null); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
+                            ) { Icon(Icons.Rounded.Logout, null); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Button(
@@ -251,8 +251,8 @@ fun AccountScreen(
                     ListItem(
                         headlineContent = { Text("Thông báo bình luận") },
                         supportingContent = { Text(if (logged) "Ai thích / không thích bình luận của bạn" else "Đăng nhập để xem lịch sử thông báo") },
-                        leadingContent = { Icon(Icons.Default.Notifications, null) },
-                        trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+                        leadingContent = { Icon(Icons.Rounded.Notifications, null) },
+                        trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
                         modifier = Modifier.clickable(onClick = onNotifs)
                     )
                 }
@@ -267,11 +267,11 @@ fun AccountScreen(
                             else "Bình luận của tôi (${mySent.size} bài${if (myCount > 0) ", $myCount lượt gửi" else ""})")
                         },
                         supportingContent = { Text(if (logged) "Theo Dashboard member • bấm để mở đúng bài" else "Đăng nhập rồi bình luận, bài sẽ tự hiện ở đây") },
-                        leadingContent = { Icon(Icons.Default.ChatBubble, null) },
+                        leadingContent = { Icon(Icons.Rounded.ChatBubble, null) },
                         trailingContent = {
                             IconButton(onClick = { reloadMine() }, enabled = !dashLoading) {
                                 if (dashLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                else Icon(Icons.Default.Refresh, "Tải lại")
+                                else Icon(Icons.Rounded.Refresh, "Tải lại")
                             }
                         }
                     )
@@ -280,7 +280,7 @@ fun AccountScreen(
                             ListItem(
                                 headlineContent = { Text(m.article.title, maxLines = 2, style = MaterialTheme.typography.bodyMedium) },
                                 supportingContent = { Text("“${m.myText.take(80)}”${if (m.time.isNotBlank()) " • ${m.time}" else ""}") },
-                                leadingContent = { Icon(Icons.Default.Comment, null) },
+                                leadingContent = { Icon(Icons.Rounded.Comment, null) },
                                 modifier = Modifier.clickable { onOpenArticle(m.article) }
                             )
                         }
@@ -289,7 +289,7 @@ fun AccountScreen(
                             ListItem(
                                 headlineContent = { Text(a.title, maxLines = 2, style = MaterialTheme.typography.bodyMedium) },
                                 supportingContent = { Text("“${t.take(80)}”") },
-                                leadingContent = { Icon(Icons.Default.Comment, null) },
+                                leadingContent = { Icon(Icons.Rounded.Comment, null) },
                                 modifier = Modifier.clickable { onOpenArticle(a) }
                             )
                         }
@@ -308,7 +308,7 @@ fun AccountScreen(
                     ListItem(
                         headlineContent = { Text("Nhận thông báo tin mới") },
                         supportingContent = { Text("Quét ~45 phút/lần, theo chuyên mục bạn chọn") },
-                        leadingContent = { Icon(Icons.Default.Notifications, null) },
+                        leadingContent = { Icon(Icons.Rounded.Notifications, null) },
                         trailingContent = {
                             Switch(checked = notify, onCheckedChange = { scope.launch { auth.setNotify(it) } })
                         }
@@ -322,7 +322,7 @@ fun AccountScreen(
                             Text(checkMsg
                                 ?: "Bình luận mới + trả lời + 👍/👎 tăng ở bài bạn đã bình luận/lưu")
                         },
-                        leadingContent = { Icon(Icons.Default.ChatBubble, null) },
+                        leadingContent = { Icon(Icons.Rounded.ChatBubble, null) },
                         trailingContent = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(
@@ -370,7 +370,7 @@ fun AccountScreen(
                                         }
                                     },
                                     label = { Text(c.name) },
-                                    leadingIcon = if (on) ({ Icon(Icons.Default.Check, null) }) else null
+                                    leadingIcon = if (on) ({ Icon(Icons.Rounded.Check, null) }) else null
                                 )
                             }
                         }
@@ -389,8 +389,8 @@ fun AccountScreen(
                     ListItem(
                         headlineContent = { Text("Hiển thị & đọc báo") },
                         supportingContent = { Text("$themeLabel • Cỡ chữ ${"%.0f".format(fontScalePref * 100)}% • bấm để chỉnh") },
-                        leadingContent = { Icon(Icons.Default.Palette, null) },
-                        trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+                        leadingContent = { Icon(Icons.Rounded.Palette, null) },
+                        trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
                         modifier = Modifier.clickable(onClick = onDisplay)
                     )
                 }
@@ -402,8 +402,8 @@ fun AccountScreen(
                     ListItem(
                         headlineContent = { Text("Kiểm tra phiên đăng nhập") },
                         supportingContent = { Text("Bình luận báo thiếu login thì bấm để xem kẹt ở đâu") },
-                        leadingContent = { Icon(Icons.Default.BugReport, null) },
-                        trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+                        leadingContent = { Icon(Icons.Rounded.BugReport, null) },
+                        trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
                         modifier = Modifier.clickable {
                             showDiag = true
                             if (!diagRunning) {
@@ -420,7 +420,7 @@ fun AccountScreen(
                     ListItem(
                         headlineContent = { Text("Về ứng dụng") },
                         supportingContent = { Text("Bóng Đá Plus Reader 1.0 • Nguồn tin: bongdaplus.vn") },
-                        leadingContent = { Icon(Icons.Default.Info, null) }
+                        leadingContent = { Icon(Icons.Rounded.Info, null) }
                     )
                 }
             }
@@ -483,8 +483,8 @@ fun MemberNotifsScreen(
     Scaffold(topBar = {
         TopAppBar(
             title = { Text("Thông báo", fontWeight = FontWeight.Bold) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } },
-            actions = { IconButton(onClick = { vm.load() }) { Icon(Icons.Default.Refresh, "Tải lại") } }
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, "Về") } },
+            actions = { IconButton(onClick = { vm.load() }) { Icon(Icons.Rounded.Refresh, "Tải lại") } }
         )
     }) { pad ->
         if (!logged) {
@@ -518,7 +518,7 @@ fun MemberNotifsScreen(
                                 Box(modifier = Modifier.size(40.dp).clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.secondaryContainer),
                                     contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.ChatBubble, "Bình luận",
+                                    Icon(Icons.Rounded.ChatBubble, "Bình luận",
                                         tint = MaterialTheme.colorScheme.onSecondaryContainer)
                                 }
                             },
@@ -544,9 +544,9 @@ fun MemberNotifsScreen(
                                     else MaterialTheme.colorScheme.primaryContainer),
                                     contentAlignment = Alignment.Center) {
                                     val (icon, desc) = when (n.action) {
-                                        "không thích" -> Icons.Default.ThumbDown to "Không thích"
-                                        "trả lời" -> Icons.Default.Reply to "Trả lời"
-                                        else -> Icons.Default.ThumbUp to "Thích"
+                                        "không thích" -> Icons.Rounded.ThumbDown to "Không thích"
+                                        "trả lời" -> Icons.Rounded.Reply to "Trả lời"
+                                        else -> Icons.Rounded.ThumbUp to "Thích"
                                     }
                                     Icon(icon, desc)
                                 }
@@ -670,9 +670,9 @@ private fun AuthWebViewScreen(
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(title) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, "Về") } },
             actions = {
-                IconButton(onClick = { webView?.reload() }) { Icon(Icons.Default.Refresh, "Tải lại") }
+                IconButton(onClick = { webView?.reload() }) { Icon(Icons.Rounded.Refresh, "Tải lại") }
             }
         )
     }) { pad ->

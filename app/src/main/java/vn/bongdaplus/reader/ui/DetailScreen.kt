@@ -10,7 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -87,7 +87,7 @@ fun DetailScreen(
                 navigationIcon = {
                     // Nút Home quả bóng (như trang chủ): về đúng chỗ đã mở bài
                     IconButton(onClick = onHome) {
-                        Icon(Icons.Default.SportsSoccer, "Về trang chủ",
+                        Icon(Icons.Rounded.SportsSoccer, "Về trang chủ",
                             tint = MaterialTheme.colorScheme.primary)
                     }
                 }
@@ -103,19 +103,19 @@ fun DetailScreen(
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        EmotionPill(Icons.Default.ThumbUp, "Thích", d.emotion.liked, selected = myEmotion == 1) {
+                        EmotionPill(Icons.Rounded.ThumbUp, "Thích", d.emotion.liked, selected = myEmotion == 1) {
                             if (logged) vm.reactArticle(1) else onLogin()
                         }
-                        EmotionPill(Icons.Default.Favorite, "Yêu thích", d.emotion.heart, selected = myEmotion == 2) {
+                        EmotionPill(Icons.Rounded.Favorite, "Yêu thích", d.emotion.heart, selected = myEmotion == 2) {
                             if (logged) vm.reactArticle(2) else onLogin()
                         }
-                        EmotionPill(Icons.Default.Star, "Wow", d.emotion.wow, selected = myEmotion == 4) {
+                        EmotionPill(Icons.Rounded.Star, "Wow", d.emotion.wow, selected = myEmotion == 4) {
                             if (logged) vm.reactArticle(4) else onLogin()
                         }
                         Spacer(Modifier.weight(1f))
                         AssistChip(
                             onClick = { showComments = true },
-                            leadingIcon = { Icon(Icons.Default.ChatBubble, "Bình luận") },
+                            leadingIcon = { Icon(Icons.Rounded.ChatBubble, "Bình luận") },
                             label = { Text("$cmtCount") },
                             modifier = Modifier.padding(end = 4.dp)
                         )
@@ -390,6 +390,8 @@ private fun CommentsBottomSheet(
         if (h.isBlank()) return false
         return c.id == h || h.contains(c.id) || c.id.contains(h)
     }
+    // Tên theo id để hiển thị "Trả lời @ai" khi reply không ghi rõ
+    val nameById = remember(comments) { comments.associate { it.id to it.name } }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     // Mở từ link #txtcomment_xxx -> cuộn thẳng tới bình luận đó
     LaunchedEffect(comments) {
@@ -413,7 +415,7 @@ private fun CommentsBottomSheet(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f))
                 IconButton(onClick = { vm.loadComments() }) {
-                    Icon(Icons.Default.Refresh, "Tải lại")
+                    Icon(Icons.Rounded.Refresh, "Tải lại")
                 }
             }
             HorizontalDivider()
@@ -423,7 +425,6 @@ private fun CommentsBottomSheet(
                 } else if (comments.isEmpty()) {
                     item { EmptyState("Chưa có bình luận. Hãy là người đầu tiên!") }
                 } else {
-                    val nameById = remember(comments) { comments.associate { it.id to it.name } }
                     items(flat, key = { it.id }) { c ->
                         ModernCommentCard(c, fontScale,
                             voted = myVotes[c.id] ?: 0,
@@ -467,7 +468,7 @@ private fun CommentsBottomSheet(
                         FilledIconButton(
                             onClick = { onSend(draft, replyTo); draft = ""; replyTo = null },
                             enabled = !sending && draft.isNotBlank()
-                        ) { Icon(Icons.Default.Send, "Gửi") }
+                        ) { Icon(Icons.Rounded.Send, "Gửi") }
                     }
                     sendMsg?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall,
@@ -705,12 +706,12 @@ private fun ModernCommentCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(
                         selected = voted == 1, onClick = onLike, enabled = canVote,
-                        leadingIcon = { Icon(Icons.Default.ThumbUp, "Thích") },
+                        leadingIcon = { Icon(Icons.Rounded.ThumbUp, "Thích") },
                         label = { Text("${c.likes}") })
                     Spacer(Modifier.width(8.dp))
                     FilterChip(
                         selected = voted == 7, onClick = onDislike, enabled = canVote,
-                        leadingIcon = { Icon(Icons.Default.ThumbDown, "Không thích") },
+                        leadingIcon = { Icon(Icons.Rounded.ThumbDown, "Không thích") },
                         label = { Text("${c.dislikes}") })
                         if (canVote) {
                             Spacer(Modifier.width(8.dp))

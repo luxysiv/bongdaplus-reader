@@ -10,9 +10,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.SportsSoccer
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.SportsSoccer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -61,9 +61,9 @@ private fun parseDeepLink(intent: android.content.Intent?): DeepLink? {
     return null
 }
 private val TABS = listOf(
-    Tab("home", "Trang chủ", Icons.Default.Home),
-    Tab("scores", "Tỉ số", Icons.Default.SportsSoccer),
-    Tab("account", "Tài khoản", Icons.Default.Person),
+    Tab("home", "Trang chủ", Icons.Rounded.Home),
+    Tab("scores", "Tỉ số", Icons.Rounded.SportsSoccer),
+    Tab("account", "Tài khoản", Icons.Rounded.Person),
 )
 
 class MainActivity : ComponentActivity() {

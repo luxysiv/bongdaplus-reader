@@ -5,8 +5,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SportsSoccer
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SportsSoccer
 import androidx.compose.material3.*
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -52,14 +52,14 @@ fun HomeScreen(
             MediumTopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.SportsSoccer, null,
+                        Icon(Icons.Rounded.SportsSoccer, null,
                             tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
                         Text("Bóng Đá Plus", fontWeight = FontWeight.Black)
                     }
                 },
                 actions = {
-                    IconButton(onClick = onSearch) { Icon(Icons.Default.Search, "Tìm kiếm") }
+                    IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, "Tìm kiếm") }
                 },
                 scrollBehavior = scrollBehavior
             )

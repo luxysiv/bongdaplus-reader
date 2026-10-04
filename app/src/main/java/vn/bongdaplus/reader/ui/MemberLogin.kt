@@ -4,7 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -77,7 +77,7 @@ fun NativeLoginScreen(
     Scaffold(topBar = {
         TopAppBar(
             title = { Text("Đăng nhập", fontWeight = FontWeight.Bold) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } }
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, "Về") } }
         )
     }) { pad ->
         Column(
@@ -93,7 +93,7 @@ fun NativeLoginScreen(
                 value = email, onValueChange = { email = it },
                 label = { Text("Email") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                leadingIcon = { Icon(Icons.Default.Email, null) },
+                leadingIcon = { Icon(Icons.Rounded.Email, null) },
                 modifier = Modifier.fillMaxWidth(), enabled = !busy
             )
             Spacer(Modifier.height(10.dp))
@@ -103,10 +103,10 @@ fun NativeLoginScreen(
                 visualTransformation = if (showPass) VisualTransformation.None
                 else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                leadingIcon = { Icon(Icons.Default.Lock, null) },
+                leadingIcon = { Icon(Icons.Rounded.Lock, null) },
                 trailingIcon = {
                     IconButton(onClick = { showPass = !showPass }) {
-                        Icon(if (showPass) Icons.Default.VisibilityOff else Icons.Default.Visibility, null)
+                        Icon(if (showPass) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, null)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(), enabled = !busy
@@ -200,7 +200,7 @@ fun NativeRegisterScreen(
     Scaffold(topBar = {
         TopAppBar(
             title = { Text("Tạo tài khoản", fontWeight = FontWeight.Bold) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } }
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, "Về") } }
         )
     }) { pad ->
         Column(
@@ -224,7 +224,7 @@ fun NativeRegisterScreen(
                 value = email, onValueChange = { email = it },
                 label = { Text("Email") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                leadingIcon = { Icon(Icons.Default.Email, null) },
+                leadingIcon = { Icon(Icons.Rounded.Email, null) },
                 modifier = Modifier.fillMaxWidth(), enabled = !busy
             )
             Spacer(Modifier.height(10.dp))
@@ -234,10 +234,10 @@ fun NativeRegisterScreen(
                 visualTransformation = if (showPass) VisualTransformation.None
                 else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                leadingIcon = { Icon(Icons.Default.Lock, null) },
+                leadingIcon = { Icon(Icons.Rounded.Lock, null) },
                 trailingIcon = {
                     IconButton(onClick = { showPass = !showPass }) {
-                        Icon(if (showPass) Icons.Default.VisibilityOff else Icons.Default.Visibility, null)
+                        Icon(if (showPass) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, null)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(), enabled = !busy

@@ -8,7 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,7 +47,7 @@ fun ScoresScreen() {
     Scaffold(topBar = {
         TopAppBar(
             title = { Text("Tỉ số", fontWeight = FontWeight.Bold) },
-            actions = { IconButton(onClick = { vm.load() }) { Icon(Icons.Default.Refresh, "Tải lại") } }
+            actions = { IconButton(onClick = { vm.load() }) { Icon(Icons.Rounded.Refresh, "Tải lại") } }
         )
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {

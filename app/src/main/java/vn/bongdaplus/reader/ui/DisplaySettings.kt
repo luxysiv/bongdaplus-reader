@@ -4,8 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -27,7 +27,7 @@ fun DisplaySettingsScreen(prefs: UiPrefs, onBack: () -> Unit) {
     Scaffold(topBar = {
         TopAppBar(
             title = { Text("Hiển thị & đọc báo", fontWeight = FontWeight.Bold) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Về") } }
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, "Về") } }
         )
     }) { pad ->
         Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
@@ -63,7 +63,7 @@ fun DisplaySettingsContent(prefs: UiPrefs, showTitle: Boolean = true) {
                 selected = theme == v,
                 onClick = { scope.launch { prefs.setThemeMode(v) } },
                 label = { Text(label) },
-                leadingIcon = if (theme == v) ({ Icon(Icons.Default.Check, null) }) else null
+                leadingIcon = if (theme == v) ({ Icon(Icons.Rounded.Check, null) }) else null
             )
         }
     }

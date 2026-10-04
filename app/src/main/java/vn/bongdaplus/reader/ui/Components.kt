@@ -10,8 +10,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.rounded.ChatBubble
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,7 +56,7 @@ fun MetaLine(a: Article, light: Boolean = false) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Icon(Icons.Default.ChatBubble, "Bình luận",
+                    Icon(Icons.Rounded.ChatBubble, "Bình luận",
                         tint = if (light) Color(0xFFC62828)
                         else MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.size(12.dp))
@@ -297,7 +297,7 @@ fun NewsRowCard(a: Article, onClick: () -> Unit) {
             Text("BongdaPlus", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
         Icon(
-            Icons.Default.ChevronRight, "Mở",
+            Icons.Rounded.ChevronRight, "Mở",
             tint = Color.Gray,
             modifier = Modifier.align(Alignment.CenterVertically)
         )
