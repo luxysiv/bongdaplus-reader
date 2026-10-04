@@ -43,7 +43,7 @@ fun DetailScreen(
     article: Article,
     auth: AuthManager,
     prefs: UiPrefs,
-    onBack: () -> Unit,
+    onHome: () -> Unit,
     onOpen: (Article) -> Unit,
     onLogin: () -> Unit,
     autoOpenComments: Boolean = false,
@@ -85,8 +85,10 @@ fun DetailScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Về")
+                    // Nút Home quả bóng (như trang chủ): về đúng chỗ đã mở bài
+                    IconButton(onClick = onHome) {
+                        Icon(Icons.Default.SportsSoccer, "Về trang chủ",
+                            tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )

@@ -220,7 +220,12 @@ class MainActivity : ComponentActivity() {
                             val article = cached?.takeIf { it.url == url }
                                 ?: Article(BongDaPlusScraper.idFromUrl(url), "Bài viết", url)
                             DetailScreen(article, auth, prefs,
-                                onBack = { nav.popBackStack() },
+                                onHome = {
+                                    // Về Home, giữ nguyên vị trí cuộn chỗ đã bấm vào
+                                    nav.navigate("home") {
+                                        popUpTo("home"); launchSingleTop = true
+                                    }
+                                },
                                 onOpen = ::openArticle,
                                 onLogin = { nav.navigate("login") },
                                 autoOpenComments = e.arguments?.getString("comments") == "1",
